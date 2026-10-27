@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $pythonExe = Join-Path $projectRoot 'backend\.venv\Scripts\python.exe'
 $npmCommand = (Get-Command npm.cmd -ErrorAction Stop).Source
@@ -57,7 +57,7 @@ New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
 [Console]::add_CancelKeyPress($cancelHandler)
 try {
     if (-not $backendAlreadyRunning) {
-        $backendProcess = Start-Process -FilePath $pythonExe -ArgumentList @('-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8000') -WorkingDirectory $backendDirectory -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $logDirectory 'backend.log') -RedirectStandardError (Join-Path $logDirectory 'backend-error.log')
+        $backendProcess = Start-Process -FilePath $pythonExe -ArgumentList @('-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8000', '--reload') -WorkingDirectory $backendDirectory -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $logDirectory 'backend.log') -RedirectStandardError (Join-Path $logDirectory 'backend-error.log')
     }
     if (-not $frontendAlreadyRunning) {
         $frontendProcess = Start-Process -FilePath $npmCommand -ArgumentList @('run', 'dev', '--', '--host', '127.0.0.1', '--strictPort') -WorkingDirectory $frontendDirectory -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $logDirectory 'frontend.log') -RedirectStandardError (Join-Path $logDirectory 'frontend-error.log')
@@ -78,7 +78,7 @@ try {
             $frontendProcess.Refresh()
             if ($frontendProcess.HasExited) { throw 'Frontend không khởi động được. Xem .run-logs\frontend-error.log.' }
             $frontendOutput = (Get-Content (Join-Path $logDirectory 'frontend.log'), (Join-Path $logDirectory 'frontend-error.log') -Raw -ErrorAction SilentlyContinue) -join "`n"
-            $frontendReady = $frontendOutput.Contains('127.0.0.1:5173')
+            $frontendReady = $frontendOutput.Contains('ready in') -or ($frontendOutput -match '127\.0\.0\.1' -and $frontendOutput -match '5173')
         }
     }
     if (-not ($backendReady -and $frontendReady)) { throw 'Hết thời gian chờ khởi động. Xem nhật ký trong .run-logs.' }

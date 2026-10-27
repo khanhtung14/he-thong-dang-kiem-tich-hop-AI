@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useCallback, useEffect, useState } from 'react'
+import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, Appointment, Certificate, ChatMessage, Inspection, InspectionResult, Owner, Role, Session, Vehicle, login as apiLogin } from './api'
 import './support-chat.css'
 
@@ -11,9 +11,17 @@ const canInspect = (role: Role) => role === 'inspector'
 
 function App() {
   const [session, setSession] = useState<Session | null>(() => {
-    const value = localStorage.getItem('inspection-session')
+    let value = sessionStorage.getItem('inspection-session')
+    if (!value) {
+      // Migrate from old localStorage if present, then clear localStorage so tabs are decoupled
+      value = localStorage.getItem('inspection-session')
+      if (value) {
+        sessionStorage.setItem('inspection-session', value)
+        localStorage.removeItem('inspection-session')
+      }
+    }
     if (!value) return null
-    try { return JSON.parse(value) as Session } catch { localStorage.removeItem('inspection-session'); return null }
+    try { return JSON.parse(value) as Session } catch { sessionStorage.removeItem('inspection-session'); localStorage.removeItem('inspection-session'); return null }
   })
   const [page, setPage] = useState<Page>('overview')
   const [mobileNav, setMobileNav] = useState(false)
@@ -39,8 +47,21 @@ function App() {
   }, [])
 
   useEffect(() => { if (session) void load(session) }, [session, load])
-  function signIn(value: Session) { localStorage.setItem('inspection-session', JSON.stringify(value)); setSession(value); setPage('overview') }
-  function signOut() { localStorage.removeItem('inspection-session'); setSession(null); setOwners([]); setVehicles([]); setAppointments([]); setInspections([]) }
+  function signIn(value: Session) {
+    sessionStorage.setItem('inspection-session', JSON.stringify(value))
+    localStorage.removeItem('inspection-session')
+    setSession(value)
+    setPage('overview')
+  }
+  function signOut() {
+    sessionStorage.removeItem('inspection-session')
+    localStorage.removeItem('inspection-session')
+    setSession(null)
+    setOwners([])
+    setVehicles([])
+    setAppointments([])
+    setInspections([])
+  }
   async function runAction(action: () => Promise<unknown>, message: string) {
     if (!session) return
     setError(''); setNotice('')
@@ -55,17 +76,16 @@ function App() {
     { id: 'appointments', label: 'Lịch hẹn', icon: '▦', allowed: ['admin', 'intake', 'inspector', 'owner'].includes(session.role) },
     { id: 'inspections', label: 'Hồ sơ kiểm định', icon: '◫', allowed: ['admin', 'intake', 'inspector', 'owner'].includes(session.role) },
     { id: 'owners', label: 'Chủ xe', icon: '♙', allowed: canIntake(session.role) },
-    { id: 'requirements-agent', label: 'Phân tích yêu cầu AI', icon: '✦', allowed: session.role === 'admin' },
+    { id: 'requirements-agent', label: 'Phân tích yêu cầu AI', icon: '✦', allowed: ['admin', 'intake', 'inspector'].includes(session.role) },
   ]
   const current = pages.find(item => item.id === page)?.label ?? 'Tổng quan'
 
   return <div className="app-shell">
     <aside className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}>
       <div className="brand"><div className="brand-mark">ĐK</div><div><strong>Đăng kiểm</strong><span>TRUNG TÂM ĐIỀU HÀNH</span></div><button className="mobile-close" onClick={() => setMobileNav(false)}>×</button></div>
-      <div className="center-select"><span className="center-dot"/><div><small>ĐANG LÀM VIỆC TẠI</small><strong>Trung tâm đăng kiểm</strong></div><span className="chevron">⌄</span></div>
       <div className="nav-label">KHÔNG GIAN LÀM VIỆC</div>
       <nav>{pages.filter(item => item.allowed).map(item => <button key={item.id} className={`nav-item ${page === item.id ? 'nav-active' : ''}`} onClick={() => { setPage(item.id); setMobileNav(false) }}><span className="nav-icon">{item.icon}</span>{item.label}{page === item.id && <span className="nav-current"/>}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="help-card"><div className="help-icon">?</div><strong>Cần hỗ trợ?</strong><span>Liên hệ quản trị hệ thống</span></div><div className="user-card"><div className="avatar">{session.username.slice(0, 1).toUpperCase()}</div><div className="user-meta"><strong>{session.username}</strong><span>{roleName[session.role]}</span></div><button className="logout" title="Đăng xuất" onClick={signOut}>↗</button></div></div>
+      <div className="sidebar-bottom"><div className="help-card"><div className="help-icon">?</div><strong>Cần hỗ trợ?</strong><span>Liên hệ quản trị hệ thống</span></div><div className="user-card"><div className="avatar">{session.username.slice(0, 1).toUpperCase()}</div><div className="user-meta"><strong>{session.username}</strong><span>{roleName[session.role]}</span></div><button className="logout" title="Đăng xuất" onClick={signOut} aria-label="Đăng xuất"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" /></svg></button></div></div>
     </aside>
     {mobileNav && <button className="backdrop" aria-label="Đóng menu" onClick={() => setMobileNav(false)}/>}
     <main className="main-area">
@@ -79,7 +99,7 @@ function App() {
         {page === 'owners' && <OwnersPage owners={owners} onCreate={body => runAction(() => api.createOwner(session.token, body), 'Đã tạo hồ sơ chủ xe.')} />}
         {page === 'appointments' && <AppointmentsPage role={session.role} vehicles={vehicles} appointments={appointments} onCreate={body => runAction(() => api.createAppointment(session.token, body), 'Đã tạo lịch hẹn.')} onCancel={id => runAction(() => api.cancelAppointment(session.token, id), 'Đã hủy lịch hẹn.')} />}
         {page === 'inspections' && <InspectionsPage role={session.role} vehicles={vehicles} inspections={inspections} token={session.token} runAction={runAction} />}
-        {page === 'requirements-agent' && session.role === 'admin' && <RequirementsAgentPage token={session.token} />}
+        {page === 'requirements-agent' && <RequirementsAgentPage token={session.token} />}
       </div>
     </main>
     <SupportChat session={session} />
@@ -93,22 +113,75 @@ function RequirementsAgentPage({ token }: { token: string }) {
   const [analysis, setAnalysis] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  async function submit(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError(''); setAnalysis('')
-    try { setAnalysis((await api.analyzeRequirement(token, requirement.trim())).analysis) }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể phân tích yêu cầu.') }
-    finally { setBusy(false) }
+
+  const samplePrompts = [
+    'Tích hợp camera AI tự động nhận diện biển số xe khi đến cổng trung tâm đăng kiểm',
+    'Tự động tra cứu dữ liệu phạt nguội và cảnh báo phương tiện trước khi tiếp nhận',
+    'Gửi tin nhắn thông báo tự động nhắc hạn đăng kiểm cho chủ xe qua Zalo / SMS',
+  ]
+
+  async function submit(event?: FormEvent) {
+    if (event) event.preventDefault()
+    const text = requirement.trim()
+    if (text.length < 2 || busy) return
+    setBusy(true); setError(''); setAnalysis('')
+    try {
+      const result = await api.analyzeRequirement(token, text)
+      setAnalysis(result.analysis)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Không thể phân tích yêu cầu.')
+    } finally {
+      setBusy(false)
+    }
   }
+
   return <>
-    <PageHeading eyebrow="CÔNG CỤ QUẢN TRỊ" title="Phân tích yêu cầu bằng AI" description="Phân tích yêu cầu mới theo bối cảnh hệ thống quản lý đăng kiểm." />
+    <PageHeading eyebrow="CÔNG CỤ NGHIỆP VỤ & QUẢN TRỊ" title="Phân tích yêu cầu bằng AI" description="Phân tích yêu cầu tính năng mới theo bối cảnh hệ thống quản lý đăng kiểm phương tiện." />
     <section className="panel requirements-agent-panel">
+      <div style={{ marginBottom: 14 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8 }}>Gợi ý mẫu yêu cầu:</span>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {samplePrompts.map((p, idx) => (
+            <button
+              key={idx}
+              type="button"
+              className="button button-outline button-sm"
+              style={{ fontSize: 12, height: 32, borderRadius: 20, padding: '0 12px' }}
+              onClick={() => setRequirement(p)}
+            >
+              ✦ {p}
+            </button>
+          ))}
+        </div>
+      </div>
       <form onSubmit={submit}>
-        <label className="field"><span>Yêu cầu cần phân tích <em>*</em></span><textarea value={requirement} onChange={event => setRequirement(event.target.value)} minLength={10} maxLength={12000} rows={8} placeholder="Mô tả nghiệp vụ hoặc tính năng cần bổ sung..." required /></label>
-        <div className="agent-form-footer"><small>{requirement.length}/12.000 ký tự</small><button className="button button-primary" disabled={busy || requirement.trim().length < 10}>{busy ? 'Đang phân tích…' : '✦ Phân tích yêu cầu'}</button></div>
+        <label className="field">
+          <span>Yêu cầu cần phân tích <em>*</em></span>
+          <textarea
+            value={requirement}
+            onChange={event => setRequirement(event.target.value)}
+            minLength={2}
+            maxLength={12000}
+            rows={6}
+            placeholder="Mô tả nghiệp vụ hoặc tính năng bạn muốn tích hợp vào hệ thống..."
+            required
+          />
+        </label>
+        <div className="agent-form-footer">
+          <small>{requirement.length}/12.000 ký tự</small>
+          <button className="button button-primary" disabled={busy || requirement.trim().length < 2}>
+            {busy ? 'Đang phân tích bằng AI…' : '✦ Phân tích yêu cầu'}
+          </button>
+        </div>
       </form>
       {error && <div className="form-error">{error}</div>}
-      {analysis && <section className="agent-result"><h2>Kết quả phân tích</h2><pre>{analysis}</pre></section>}
-      <p className="agent-disclaimer">Kết quả AI là bản nháp hỗ trợ phân tích. Cần được nghiệp vụ và chuyên gia có thẩm quyền rà soát trước khi đưa vào thực hiện.</p>
+      {analysis && (
+        <section className="agent-result">
+          <h2>Kết quả phân tích từ AI</h2>
+          <pre>{analysis}</pre>
+        </section>
+      )}
+      <p className="agent-disclaimer">Kết quả AI là bản phân tích nghiệp vụ hỗ trợ lập kế hoạch. Cần được rà soát kỹ thuật trước khi đưa vào triển khai thực tế.</p>
     </section>
   </>
 }
@@ -118,12 +191,19 @@ function SupportChat({ session }: { session: Session }) {
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const messagesEndRef = useRef<HTMLDivElement>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: 'assistant', content: `Xin chào ${session.username}! Tôi có thể hướng dẫn bạn sử dụng các chức năng theo vai trò ${roleName[session.role]}. Bạn cần trợ giúp gì?` },
   ])
 
-  async function submit(event: FormEvent) {
-    event.preventDefault()
+  useEffect(() => {
+    if (open) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages, busy, open])
+
+  async function submit(event?: FormEvent) {
+    if (event) event.preventDefault()
     const content = draft.trim()
     if (!content || busy) return
     const updated = [...messages, { role: 'user' as const, content }]
@@ -142,16 +222,36 @@ function SupportChat({ session }: { session: Session }) {
       <div className="support-chat-messages" aria-live="polite">
         {messages.map((item, index) => <div key={`${index}-${item.role}`} className={`support-chat-message ${item.role === 'user' ? 'from-user' : 'from-assistant'}`}>{item.content}</div>)}
         {busy && <div className="support-chat-message from-assistant">Đang soạn câu trả lời…</div>}
+        <div ref={messagesEndRef} />
       </div>
       {error && <div className="support-chat-error">{error}</div>}
       <form className="support-chat-form" onSubmit={submit}>
-        <textarea value={draft} onChange={event => setDraft(event.target.value)} maxLength={4000} rows={2} placeholder="Nhập câu hỏi của bạn…" aria-label="Tin nhắn" />
+        <textarea
+          value={draft}
+          onChange={event => setDraft(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault()
+              void submit()
+            }
+          }}
+          maxLength={4000}
+          rows={2}
+          placeholder="Nhập câu hỏi của bạn (Nhấn Enter để gửi, Shift+Enter xuống dòng)…"
+          aria-label="Tin nhắn"
+        />
         <button className="button button-primary" disabled={busy || !draft.trim()} aria-label="Gửi tin nhắn">{busy ? '…' : 'Gửi'}</button>
       </form>
       <p className="support-chat-note">Không gửi mật khẩu hoặc thông tin cá nhân. AI có thể trả lời chưa chính xác.</p>
     </section>}
-    <button type="button" className={`support-chat-toggle ${open ? 'is-open' : ''}`} onClick={() => setOpen(value => !value)} aria-label={open ? 'Đóng trợ lý' : 'Mở trợ lý'}>
-      <span>{open ? '×' : '✦'}</span>{!open && <b>Trợ lý AI</b>}
+    <button type="button" className={`support-chat-toggle ${open ? 'is-open' : ''}`} onClick={() => setOpen(value => !value)} aria-label={open ? 'Đóng trợ lý' : 'Mở trợ lý'} title="Trợ lý AI">
+      {open ? (
+        <span className="support-chat-close-icon">×</span>
+      ) : (
+        <svg className="support-chat-star-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M12 2C12 7.523 7.523 12 2 12C7.523 12 12 16.477 12 22C12 16.477 16.477 12 22 12C16.477 12 12 7.523 12 2Z" />
+        </svg>
+      )}
     </button>
   </div>
 }
@@ -170,11 +270,9 @@ function Overview({ session, owners, vehicles, appointments, inspections, naviga
   const passed = inspections.filter(item => item.status === 'passed').length
   const failed = inspections.filter(item => item.status === 'failed').length
   const recent = [...inspections].sort((a, b) => b.received_at.localeCompare(a.received_at)).slice(0, 5)
-  return <><div className="welcome-row"><div><div className="eyebrow"><i/> THỨC TRẠNG HỆ THỐNG</div><h1>Xin chào, {session.username}<span className="wave">✳</span></h1><p>Theo dõi hoạt động và xử lý công việc tại trung tâm của bạn.</p></div><div className="today-chip"><span className="today-icon">▦</span><div><small>HÔM NAY</small><strong>{new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date())}</strong></div></div></div>
+  return <><div className="welcome-row"><div><h1>Xin chào, {session.username}<span className="wave">✳</span></h1><p>Theo dõi hoạt động và xử lý công việc tại trung tâm của bạn.</p></div></div>
     <section className="stat-grid"><StatCard label="Phương tiện" value={vehicles.length} hint="Trong hệ thống" icon="▣" tone="blue"/><StatCard label="Lịch hẹn hôm nay" value={todayAppointments.length} hint="Đang hiệu lực" icon="▦" tone="orange"/><StatCard label="Hồ sơ đạt" value={passed} hint="Theo dữ liệu đã ghi" icon="✓" tone="green"/><StatCard label="Hồ sơ không đạt" value={failed} hint="Cần theo dõi" icon="!" tone="red"/></section>
-    <div className="dashboard-grid"><section className="panel recent-panel"><div className="panel-heading"><div><h3>Hồ sơ gần đây</h3><p>Các lượt tiếp nhận mới nhất</p></div><button className="text-button" onClick={() => navigate('inspections')}>Xem hồ sơ <span>→</span></button></div>{recent.length ? <div className="table-wrap"><table><thead><tr><th>MÃ HỒ SƠ</th><th>PHƯƠNG TIỆN</th><th>LOẠI HỒ SƠ</th><th>NGÀY TIẾP NHẬN</th><th>TRẠNG THÁI</th></tr></thead><tbody>{recent.map(item => <tr key={item.id}><td><strong className="mono">{item.code}</strong></td><td>{vehicleLabel(vehicles, item.vehicle_id)}</td><td>{item.inspection_type === 'first' ? 'Lần đầu' : 'Định kỳ'}</td><td>{formatDate(item.received_at)}</td><td><StatusBadge value={item.status}/></td></tr>)}</tbody></table></div> : <Empty title="Chưa có hồ sơ kiểm định" detail="Hồ sơ mới sẽ xuất hiện tại đây."/>}</section>
-    <section className="panel quick-panel"><div className="panel-heading"><div><h3>Thao tác nhanh</h3><p>Truy cập các nghiệp vụ thường dùng</p></div></div><button className="quick-action" onClick={() => navigate('vehicles')}><span className="quick-icon tint-blue">▣</span><span><b>Phương tiện</b><small>Tra cứu danh sách phương tiện</small></span><i>→</i></button><button className="quick-action" onClick={() => navigate('appointments')}><span className="quick-icon tint-orange">▦</span><span><b>Lịch hẹn</b><small>Xem và quản lý lịch đăng kiểm</small></span><i>→</i></button><button className="quick-action" onClick={() => navigate('inspections')}><span className="quick-icon tint-green">◫</span><span><b>Hồ sơ kiểm định</b><small>Theo dõi tiến độ hồ sơ</small></span><i>→</i></button>{canIntake(session.role) && <button className="quick-action" onClick={() => navigate('owners')}><span className="quick-icon tint-purple">♙</span><span><b>Chủ xe</b><small>Quản lý thông tin chủ phương tiện</small></span><i>→</i></button>}</section></div>
-    {session.role === 'admin' || session.role === 'intake' ? <div className="dashboard-footnote"><span>i</span><div><b>Thông tin thống kê</b><p>Số liệu trên trang được tổng hợp từ danh sách API hiện có. Báo cáo chốt cuối ngày chưa được backend cung cấp.</p></div></div> : null}
+    <div className="dashboard-grid"><section className="panel recent-panel"><div className="panel-heading"><div><h3>Hồ sơ gần đây</h3><p>Các lượt tiếp nhận mới nhất</p></div><button className="text-button" onClick={() => navigate('inspections')}>Xem hồ sơ <span>→</span></button></div>{recent.length ? <div className="table-wrap"><table className="dashboard-recent-table"><thead><tr><th>MÃ HỒ SƠ</th><th>PHƯƠNG TIỆN</th><th>LOẠI HỒ SƠ</th><th>NGÀY TIẾP NHẬN</th><th>TRẠNG THÁI</th></tr></thead><tbody>{recent.map(item => <tr key={item.id}><td><strong className="mono dashboard-code">{item.code}</strong></td><td className="dashboard-vehicle-cell">{vehicleLabel(vehicles, item.vehicle_id)}</td><td className="dashboard-type-cell">{item.inspection_type === 'first' ? 'Lần đầu' : 'Định kỳ'}</td><td className="dashboard-date-cell">{formatDate(item.received_at)}</td><td><StatusBadge value={item.status}/></td></tr>)}</tbody></table></div> : <Empty title="Chưa có hồ sơ kiểm định" detail="Hồ sơ mới sẽ xuất hiện tại đây."/>}</section></div>
     {canIntake(session.role) && <div className="mini-summary"><div><small>CHỦ XE</small><strong>{owners.length}</strong><span>Hồ sơ đã đăng ký</span></div><div><small>LỊCH HẸN</small><strong>{appointments.filter(a => a.status === 'active').length}</strong><span>Lịch đang hiệu lực</span></div><div><small>HỒ SƠ ĐANG XỬ LÝ</small><strong>{inspections.filter(i => ['received', 'in_progress', 'needs_documents'].includes(i.status)).length}</strong><span>Chưa hoàn tất</span></div></div>}
   </>
 }
@@ -184,14 +282,219 @@ function StatCard({ label, value, hint, icon, tone }: { label: string; value: nu
 function VehiclesPage({ role, vehicles, owners, onCreate }: { role: Role; vehicles: Vehicle[]; owners: Owner[]; onCreate: (body: Omit<Vehicle, 'id'>) => Promise<void> }) {
   const [query, setQuery] = useState(''); const [open, setOpen] = useState(false)
   const filtered = vehicles.filter(v => `${v.registration_number} ${v.chassis_number} ${v.engine_number} ${v.vehicle_type}`.toLowerCase().includes(query.toLowerCase()))
-  return <><PageHeading eyebrow="DỮ LIỆU NỀN" title="Phương tiện" description="Thông tin phương tiện được quản lý trong hệ thống đăng kiểm." action={canIntake(role) ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Thêm phương tiện</button> : undefined}/><div className="toolbar"><div className="search-box"><span>⌕</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Tìm theo biển số, số khung..."/></div><span className="result-count">{filtered.length} phương tiện</span></div><section className="panel list-panel">{filtered.length ? <div className="table-wrap"><table><thead><tr><th>BIỂN SỐ</th><th>LOẠI PHƯƠNG TIỆN</th><th>SỐ KHUNG</th><th>SỐ MÁY</th><th>CHỦ XE</th></tr></thead><tbody>{filtered.map(v => <tr key={v.id}><td><span className="plate">{v.registration_number}</span></td><td>{v.vehicle_type}</td><td className="mono muted-cell">{v.chassis_number}</td><td className="mono muted-cell">{v.engine_number}</td><td>{owners.find(o => o.id === v.owner_id)?.display_name ?? `Chủ xe #${v.owner_id}`}</td></tr>)}</tbody></table></div> : <Empty title="Không tìm thấy phương tiện" detail={query ? 'Thử thay đổi nội dung tìm kiếm.' : 'Danh sách phương tiện đang trống.'}/>}</section>{open && <VehicleModal owners={owners} onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}</>
+  return <>
+    <PageHeading eyebrow="DỮ LIỆU NỀN" title="Phương tiện" description="Thông tin phương tiện được quản lý trong hệ thống đăng kiểm." action={canIntake(role) ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Thêm phương tiện</button> : undefined}/>
+    <div className="toolbar">
+      <div className="search-box">
+        <span>⌕</span>
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Tìm theo biển số, loại xe, số khung, số máy..."/>
+      </div>
+      <span className="result-count">{filtered.length} phương tiện</span>
+    </div>
+    <section className="panel list-panel vehicles-panel">
+      {filtered.length ? (
+        <div className="table-wrap">
+          <table className="vehicles-table">
+            <thead>
+              <tr>
+                <th>BIỂN SỐ</th>
+                <th>LOẠI PHƯƠNG TIỆN</th>
+                <th>SỐ KHUNG</th>
+                <th>SỐ MÁY</th>
+                <th>CHỦ XE</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(v => (
+                <tr key={v.id}>
+                  <td><span className="plate plate-large">{v.registration_number}</span></td>
+                  <td className="vehicle-type-cell">{v.vehicle_type}</td>
+                  <td><span className="mono vehicle-code-cell">{v.chassis_number}</span></td>
+                  <td><span className="mono vehicle-code-cell">{v.engine_number}</span></td>
+                  <td className="vehicle-owner-cell">
+                    <strong>{owners.find(o => o.id === v.owner_id)?.display_name ?? `Chủ xe #${v.owner_id}`}</strong>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty title="Không tìm thấy phương tiện" detail={query ? 'Thử thay đổi nội dung tìm kiếm.' : 'Danh sách phương tiện đang trống.'}/>
+      )}
+    </section>
+    {open && <VehicleModal owners={owners} onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}
+  </>
 }
 
-function OwnersPage({ owners, onCreate }: { owners: Owner[]; onCreate: (body: Omit<Owner, 'id'>) => Promise<void> }) { const [open, setOpen] = useState(false); const [query, setQuery] = useState(''); const filtered = owners.filter(o => `${o.display_name} ${o.phone} ${o.identity_or_tax_number}`.toLowerCase().includes(query.toLowerCase())); return <><PageHeading eyebrow="DỮ LIỆU NỀN" title="Chủ xe" description="Quản lý thông tin chủ xe đã được tiếp nhận." action={<button className="button button-primary" onClick={() => setOpen(true)}>＋ Thêm chủ xe</button>}/><div className="toolbar"><div className="search-box"><span>⌕</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Tìm theo tên, số điện thoại..."/></div><span className="result-count">{filtered.length} chủ xe</span></div><section className="panel list-panel">{filtered.length ? <div className="table-wrap"><table><thead><tr><th>CHỦ XE</th><th>ĐỊNH DANH / MÃ SỐ THUẾ</th><th>SỐ ĐIỆN THOẠI</th><th>ĐỊA CHỈ</th></tr></thead><tbody>{filtered.map(o => <tr key={o.id}><td><div className="person-cell"><span className="person-avatar">{o.display_name.slice(0, 1)}</span><b>{o.display_name}</b></div></td><td className="mono muted-cell">{o.identity_or_tax_number}</td><td>{o.phone}</td><td className="address-cell">{o.address}</td></tr>)}</tbody></table></div> : <Empty title="Chưa có dữ liệu chủ xe" detail="Tạo hồ sơ chủ xe để liên kết phương tiện."/>}</section>{open && <OwnerModal onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}</> }
+function OwnersPage({ owners, onCreate }: { owners: Owner[]; onCreate: (body: Omit<Owner, 'id'>) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const filtered = owners.filter(o => `${o.display_name} ${o.phone} ${o.identity_or_tax_number}`.toLowerCase().includes(query.toLowerCase()));
+  return <>
+    <PageHeading eyebrow="DỮ LIỆU NỀN" title="Chủ xe" description="Quản lý thông tin chủ xe đã được tiếp nhận." action={<button className="button button-primary" onClick={() => setOpen(true)}>＋ Thêm chủ xe</button>}/>
+    <div className="toolbar">
+      <div className="search-box">
+        <span>⌕</span>
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Tìm theo tên chủ xe, số điện thoại, CCCD/MST..."/>
+      </div>
+      <span className="result-count">{filtered.length} chủ xe</span>
+    </div>
+    <section className="panel list-panel owners-panel">
+      {filtered.length ? (
+        <div className="table-wrap">
+          <table className="owners-table">
+            <thead>
+              <tr>
+                <th>CHỦ XE</th>
+                <th>ĐỊNH DANH / MÃ SỐ THUẾ</th>
+                <th>SỐ ĐIỆN THOẠI</th>
+                <th>ĐỊA CHỈ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(o => (
+                <tr key={o.id}>
+                  <td>
+                    <div className="person-cell person-cell-large">
+                      <span className="person-avatar person-avatar-large">{o.display_name.slice(0, 1).toUpperCase()}</span>
+                      <strong className="person-name">{o.display_name}</strong>
+                    </div>
+                  </td>
+                  <td><span className="mono owner-identity-code">{o.identity_or_tax_number}</span></td>
+                  <td><span className="owner-phone">{o.phone}</span></td>
+                  <td className="address-cell owner-address-cell">{o.address}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty title="Chưa có dữ liệu chủ xe" detail="Tạo hồ sơ chủ xe để liên kết phương tiện."/>
+      )}
+    </section>
+    {open && <OwnerModal onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}
+  </>
+}
 
-function AppointmentsPage({ role, vehicles, appointments, onCreate, onCancel }: { role: Role; vehicles: Vehicle[]; appointments: Appointment[]; onCreate: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void>; onCancel: (id: number) => Promise<void> }) { const [open, setOpen] = useState(false); const [filter, setFilter] = useState('all'); const visible = appointments.filter(item => filter === 'all' || item.status === filter); return <><PageHeading eyebrow="ĐIỀU PHỐI" title="Lịch hẹn đăng kiểm" description="Theo dõi lịch hẹn và trạng thái tiếp nhận phương tiện." action={['admin', 'intake', 'owner'].includes(role) ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Tạo lịch hẹn</button> : undefined}/><div className="filter-row"><div className="tabs"><button className={filter === 'all' ? 'tab-active' : ''} onClick={() => setFilter('all')}>Tất cả <b>{appointments.length}</b></button><button className={filter === 'active' ? 'tab-active' : ''} onClick={() => setFilter('active')}>Đang hiệu lực</button><button className={filter === 'cancelled' ? 'tab-active' : ''} onClick={() => setFilter('cancelled')}>Đã hủy</button></div><span className="result-count">{visible.length} lịch hẹn</span></div><section className="panel list-panel">{visible.length ? <div className="table-wrap"><table><thead><tr><th>MÃ LỊCH</th><th>PHƯƠNG TIỆN</th><th>NGÀY & KHUNG GIỜ</th><th>TRUNG TÂM</th><th>DỊCH VỤ</th><th>TRẠNG THÁI</th><th/></tr></thead><tbody>{visible.map(a => <tr key={a.id}><td className="mono"><b>{a.code}</b></td><td><span className="plate plate-small">{vehicleLabel(vehicles, a.vehicle_id)}</span></td><td><b>{formatDate(a.appointment_date)}</b><small className="table-sub">{a.start_time.slice(0, 5)} – {a.end_time.slice(0, 5)}</small></td><td>{a.center}</td><td>{serviceName(a.service_type)}</td><td><StatusBadge value={a.status}/></td><td>{a.status === 'active' && ['admin', 'intake', 'owner'].includes(role) && <button className="small-action" onClick={() => void onCancel(a.id)}>Hủy lịch</button>}</td></tr>)}</tbody></table></div> : <Empty title="Chưa có lịch hẹn" detail="Lịch hẹn mới sẽ hiển thị ở đây."/>}</section>{open && <AppointmentModal vehicles={vehicles} onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}</> }
+function AppointmentsPage({ role, vehicles, appointments, onCreate, onCancel }: { role: Role; vehicles: Vehicle[]; appointments: Appointment[]; onCreate: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void>; onCancel: (id: number) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState('all');
+  const visible = appointments.filter(item => filter === 'all' || item.status === filter);
+  return <>
+    <PageHeading eyebrow="ĐIỀU PHỐI" title="Lịch hẹn đăng kiểm" description="Theo dõi lịch hẹn và trạng thái tiếp nhận phương tiện." action={['admin', 'intake', 'owner'].includes(role) ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Tạo lịch hẹn</button> : undefined}/>
+    <div className="filter-row">
+      <div className="tabs">
+        <button className={filter === 'all' ? 'tab-active' : ''} onClick={() => setFilter('all')}>Tất cả <b>{appointments.length}</b></button>
+        <button className={filter === 'active' ? 'tab-active' : ''} onClick={() => setFilter('active')}>Đang hiệu lực</button>
+        <button className={filter === 'cancelled' ? 'tab-active' : ''} onClick={() => setFilter('cancelled')}>Đã hủy</button>
+      </div>
+      <span className="result-count">{visible.length} lịch hẹn</span>
+    </div>
+    <section className="panel list-panel appointments-panel">
+      {visible.length ? (
+        <div className="table-wrap">
+          <table className="appointments-table">
+            <thead>
+              <tr>
+                <th>MÃ LỊCH</th>
+                <th>PHƯƠNG TIỆN</th>
+                <th>NGÀY & KHUNG GIỜ</th>
+                <th>TRUNG TÂM</th>
+                <th>DỊCH VỤ</th>
+                <th>TRẠNG THÁI</th>
+                <th>THAO TÁC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map(a => (
+                <tr key={a.id}>
+                  <td><strong className="mono appointment-code">{a.code}</strong></td>
+                  <td><span className="plate plate-large">{vehicleLabel(vehicles, a.vehicle_id)}</span></td>
+                  <td>
+                    <div className="appointment-datetime">
+                      <b className="appointment-date">{formatDate(a.appointment_date)}</b>
+                      <span className="appointment-time">{a.start_time.slice(0, 5)} – {a.end_time.slice(0, 5)}</span>
+                    </div>
+                  </td>
+                  <td className="appointment-center">{a.center}</td>
+                  <td className="appointment-service">{serviceName(a.service_type)}</td>
+                  <td><StatusBadge value={a.status}/></td>
+                  <td>
+                    {a.status === 'active' && ['admin', 'intake', 'owner'].includes(role) && (
+                      <button className="button button-outline button-sm cancel-action" onClick={() => void onCancel(a.id)}>Hủy lịch</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty title="Chưa có lịch hẹn" detail="Lịch hẹn mới sẽ hiển thị ở đây."/>
+      )}
+    </section>
+    {open && <AppointmentModal vehicles={vehicles} onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}
+  </>
+}
 
-function InspectionsPage({ role, vehicles, inspections, token, runAction }: { role: Role; vehicles: Vehicle[]; inspections: Inspection[]; token: string; runAction: (action: () => Promise<unknown>, message: string) => Promise<void> }) { const [open, setOpen] = useState(false); const [selected, setSelected] = useState<Inspection | null>(null); const [filter, setFilter] = useState('all'); const visible = inspections.filter(i => filter === 'all' || i.status === filter); const canCreate = canIntake(role); return <><PageHeading eyebrow="NGHIỆP VỤ KIỂM ĐỊNH" title="Hồ sơ kiểm định" description="Tiếp nhận hồ sơ và theo dõi kết quả kiểm tra phương tiện." action={canCreate ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Tiếp nhận hồ sơ</button> : undefined}/><div className="filter-row"><div className="tabs"><button className={filter === 'all' ? 'tab-active' : ''} onClick={() => setFilter('all')}>Tất cả <b>{inspections.length}</b></button>{(['received', 'in_progress', 'passed', 'failed'] as const).map(s => <button key={s} className={filter === s ? 'tab-active' : ''} onClick={() => setFilter(s)}>{statusName[s]}</button>)}</div><span className="result-count">{visible.length} hồ sơ</span></div><section className="panel list-panel">{visible.length ? <div className="table-wrap"><table><thead><tr><th>MÃ HỒ SƠ</th><th>PHƯƠNG TIỆN</th><th>LOẠI</th><th>KÊNH TIẾP NHẬN</th><th>NGÀY TIẾP NHẬN</th><th>TRẠNG THÁI</th><th/></tr></thead><tbody>{visible.map(i => <tr key={i.id}><td className="mono"><b>{i.code}</b></td><td><span className="plate plate-small">{vehicleLabel(vehicles, i.vehicle_id)}</span></td><td>{i.inspection_type === 'first' ? 'Lần đầu' : 'Định kỳ'}</td><td>{channelName(i.intake_channel)}</td><td>{formatDate(i.received_at)}</td><td><StatusBadge value={i.status}/></td><td><button className="small-action" onClick={() => setSelected(i)}>Chi tiết →</button></td></tr>)}</tbody></table></div> : <Empty title="Chưa có hồ sơ kiểm định" detail="Tiếp nhận hồ sơ mới để bắt đầu theo dõi."/>}</section>{open && <InspectionModal vehicles={vehicles} onClose={() => setOpen(false)} onSubmit={async body => { await runAction(() => api.createInspection(token, body), 'Đã tiếp nhận hồ sơ.'); setOpen(false) }}/>}{selected && <InspectionDetail inspection={selected} vehicle={vehicles.find(v => v.id === selected.vehicle_id)} token={token} role={role} onClose={() => setSelected(null)} runAction={runAction}/>}</> }
+function InspectionsPage({ role, vehicles, inspections, token, runAction }: { role: Role; vehicles: Vehicle[]; inspections: Inspection[]; token: string; runAction: (action: () => Promise<unknown>, message: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Inspection | null>(null);
+  const [filter, setFilter] = useState('all');
+  const visible = inspections.filter(i => filter === 'all' || i.status === filter);
+  const canCreate = canIntake(role);
+  return <>
+    <PageHeading eyebrow="NGHIỆP VỤ KIỂM ĐỊNH" title="Hồ sơ kiểm định" description="Tiếp nhận hồ sơ và theo dõi kết quả kiểm tra phương tiện." action={canCreate ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Tiếp nhận hồ sơ</button> : undefined}/>
+    <div className="filter-row">
+      <div className="tabs">
+        <button className={filter === 'all' ? 'tab-active' : ''} onClick={() => setFilter('all')}>Tất cả <b>{inspections.length}</b></button>
+        {(['received', 'in_progress', 'passed', 'failed'] as const).map(s => (
+          <button key={s} className={filter === s ? 'tab-active' : ''} onClick={() => setFilter(s)}>{statusName[s]}</button>
+        ))}
+      </div>
+      <span className="result-count">{visible.length} hồ sơ</span>
+    </div>
+    <section className="panel list-panel inspections-panel">
+      {visible.length ? (
+        <div className="table-wrap">
+          <table className="inspections-table">
+            <thead>
+              <tr>
+                <th>MÃ HỒ SƠ</th>
+                <th>PHƯƠNG TIỆN</th>
+                <th>LOẠI KIỂM ĐỊNH</th>
+                <th>KÊNH TIẾP NHẬN</th>
+                <th>NGÀY TIẾP NHẬN</th>
+                <th>TRẠNG THÁI</th>
+                <th>THAO TÁC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map(i => (
+                <tr key={i.id}>
+                  <td><strong className="mono inspection-code">{i.code}</strong></td>
+                  <td><span className="plate plate-large">{vehicleLabel(vehicles, i.vehicle_id)}</span></td>
+                  <td className="inspection-type-cell"><strong>{i.inspection_type === 'first' ? 'Lần đầu' : 'Định kỳ'}</strong></td>
+                  <td className="inspection-channel-cell">{channelName(i.intake_channel)}</td>
+                  <td className="inspection-date-cell">{formatDate(i.received_at)}</td>
+                  <td><StatusBadge value={i.status}/></td>
+                  <td>
+                    <button className="button button-outline button-sm detail-action-btn" onClick={() => setSelected(i)}>Chi tiết →</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty title="Chưa có hồ sơ kiểm định" detail="Tiếp nhận hồ sơ mới để bắt đầu theo dõi."/>
+      )}
+    </section>
+    {open && <InspectionModal vehicles={vehicles} onClose={() => setOpen(false)} onSubmit={async body => { await runAction(() => api.createInspection(token, body), 'Đã tiếp nhận hồ sơ.'); setOpen(false) }}/>}
+    {selected && <InspectionDetail inspection={selected} vehicle={vehicles.find(v => v.id === selected.vehicle_id)} token={token} role={role} onClose={() => setSelected(null)} runAction={runAction}/>}
+  </>
+}
 
 function InspectionDetail({ inspection, vehicle, token, role, onClose, runAction }: { inspection: Inspection; vehicle?: Vehicle; token: string; role: Role; onClose: () => void; runAction: (action: () => Promise<unknown>, message: string) => Promise<void> }) { const [results, setResults] = useState<InspectionResult[]>([]); const [loading, setLoading] = useState(true); const [add, setAdd] = useState(false); const [certificate, setCertificate] = useState(false); const [error, setError] = useState(''); const refresh = useCallback(async () => { try { setResults(await api.results(token, inspection.id)) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không tải được kết quả') } finally { setLoading(false) } }, [token, inspection.id]); useEffect(() => { void refresh() }, [refresh]); return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}><section className="detail-drawer"><div className="drawer-head"><div><div className="eyebrow">CHI TIẾT HỒ SƠ</div><h2>{inspection.code}</h2></div><button className="close-button" onClick={onClose}>×</button></div><div className="drawer-status"><StatusBadge value={inspection.status}/><span>{inspection.inspection_type === 'first' ? 'Kiểm định lần đầu' : 'Kiểm định định kỳ'}</span></div><div className="detail-vehicle"><span className="vehicle-large-icon">▣</span><div><small>PHƯƠNG TIỆN</small><strong>{vehicle?.registration_number ?? `Xe #${inspection.vehicle_id}`}</strong><span>{vehicle?.vehicle_type ?? 'Chưa có thông tin'}</span></div></div><div className="detail-grid"><DetailField label="Kênh tiếp nhận" value={channelName(inspection.intake_channel)}/><DetailField label="Ngày tiếp nhận" value={formatDate(inspection.received_at)}/><DetailField label="Số quản lý GCN cũ" value={inspection.old_certificate_management_number}/><DetailField label="Số giấy đăng ký / giấy hẹn" value={inspection.registration_document_number}/></div><div className="section-divider"/><div className="panel-heading detail-section-heading"><div><h3>Kết quả hạng mục</h3><p>{results.length} kết quả đã ghi nhận</p></div>{canInspect(role) && !['passed', 'failed'].includes(inspection.status) && <button className="button button-outline button-sm" onClick={() => setAdd(true)}>＋ Ghi kết quả</button>}</div>{error && <div className="form-error">{error}</div>}{loading ? <div className="detail-loading">Đang tải kết quả...</div> : results.length ? <div className="result-list">{results.map(result => <div className="result-row" key={result.id}><span className="stage-number">{result.stage}</span><div><b>{result.item_code}</b><small>Công đoạn {result.stage} · {formatDate(result.recorded_at)}</small></div>{result.measured_value !== null && <span className="measure">{result.measured_value} {result.unit ?? ''}</span>}<StatusBadge value={result.result}/></div>)}</div> : <Empty title="Chưa có kết quả" detail="Kết quả từng hạng mục sẽ xuất hiện tại đây."/>}{canInspect(role) && !['passed', 'failed'].includes(inspection.status) && <div className="detail-actions"><button className="button button-outline" onClick={() => void runAction(() => api.finalize(token, inspection.id), 'Đã chốt kết quả kiểm định.')}>Chốt checklist hoàn tất</button></div>}{inspection.status === 'passed' && ['admin', 'inspector'].includes(role) && <button className="button button-primary full-button" onClick={() => setCertificate(true)}>Phát hành chứng nhận</button>}{add && <ResultModal onClose={() => setAdd(false)} onSubmit={async body => { await runAction(() => api.addResult(token, inspection.id, body), 'Đã lưu kết quả kiểm tra.'); await refresh(); setAdd(false) }}/>}{certificate && <CertificateModal onClose={() => setCertificate(false)} onSubmit={async body => { await runAction(() => api.issueCertificate(token, inspection.id, body), 'Đã tạo chứng nhận.'); setCertificate(false) }}/>}</section></div> }
 
@@ -206,7 +509,7 @@ function channelName(value: string) { return ({ counter: 'Tại quầy', postal:
 
 function Modal({ title, subtitle, children, onClose, onSubmit, submitLabel = 'Lưu thông tin' }: { title: string; subtitle: string; children: ReactNode; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; submitLabel?: string }) { const [busy, setBusy] = useState(false); return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}><form className="form-modal" onSubmit={async e => { e.preventDefault(); setBusy(true); try { await onSubmit(e) } finally { setBusy(false) } }}><div className="modal-heading"><div><div className="eyebrow">THÔNG TIN NGHIỆP VỤ</div><h2>{title}</h2><p>{subtitle}</p></div><button type="button" className="close-button" onClick={onClose}>×</button></div><div className="modal-body">{children}</div><div className="modal-footer"><button type="button" className="button button-ghost" onClick={onClose}>Hủy</button><button className="button button-primary" disabled={busy}>{busy ? 'Đang lưu...' : submitLabel}<span>→</span></button></div></form></div> }
 function Field({ label, children, required = false }: { label: string; children: ReactNode; required?: boolean }) { return <label className="field"><span>{label}{required && <em> *</em>}</span>{children}</label> }
-function OwnerModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (body: Omit<Owner, 'id'>) => Promise<void> }) { const [error, setError] = useState(''); async function submit(e: FormEvent<HTMLFormElement>) { const f = new FormData(e.currentTarget); try { await onSubmit({ display_name: String(f.get('name')), identity_or_tax_number: String(f.get('identity')), phone: String(f.get('phone')), address: String(f.get('address')) }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể lưu chủ xe') } } return <Modal title="Thêm chủ xe" subtitle="Nhập thông tin theo giấy tờ của chủ xe." onClose={onClose} onSubmit={submit}><div className="form-grid"><Field label="Họ tên cá nhân / tên tổ chức" required><input name="name" maxLength={255} required placeholder="Nhập họ tên hoặc tên tổ chức"/></Field><Field label="Số định danh / mã số thuế" required><input name="identity" maxLength={50} required placeholder="Nhập số giấy tờ"/></Field><Field label="Số điện thoại" maxLength={30} required><input name="phone" maxLength={30} required placeholder="Số điện thoại liên hệ"/></Field><Field label="Địa chỉ cư trú / trụ sở" required><textarea name="address" required rows={3} placeholder="Theo giấy đăng ký xe"/></Field></div>{error && <div className="form-error">{error}</div>}</Modal> }
+function OwnerModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (body: Omit<Owner, 'id'>) => Promise<void> }) { const [error, setError] = useState(''); async function submit(e: FormEvent<HTMLFormElement>) { const f = new FormData(e.currentTarget); try { await onSubmit({ display_name: String(f.get('name')), identity_or_tax_number: String(f.get('identity')), phone: String(f.get('phone')), address: String(f.get('address')) }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể lưu chủ xe') } } return <Modal title="Thêm chủ xe" subtitle="Nhập thông tin theo giấy tờ của chủ xe." onClose={onClose} onSubmit={submit}><div className="form-grid"><Field label="Họ tên cá nhân / tên tổ chức" required><input name="name" maxLength={255} required placeholder="Nhập họ tên hoặc tên tổ chức"/></Field><Field label="Số định danh / mã số thuế" required><input name="identity" maxLength={50} required placeholder="Nhập số giấy tờ"/></Field><Field label="Số điện thoại" required><input name="phone" maxLength={30} required placeholder="Số điện thoại liên hệ"/></Field><Field label="Địa chỉ cư trú / trụ sở" required><textarea name="address" required rows={3} placeholder="Theo giấy đăng ký xe"/></Field></div>{error && <div className="form-error">{error}</div>}</Modal> }
 function VehicleModal({ owners, onClose, onSubmit }: { owners: Owner[]; onClose: () => void; onSubmit: (body: Omit<Vehicle, 'id'>) => Promise<void> }) { const [error, setError] = useState(''); async function submit(e: FormEvent<HTMLFormElement>) { const f = new FormData(e.currentTarget); try { await onSubmit({ owner_id: Number(f.get('owner')), registration_number: String(f.get('plate')), plate_classification: String(f.get('plateClass') || '') || null, chassis_number: String(f.get('chassis')), engine_number: String(f.get('engine')), vehicle_type: String(f.get('type')) }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể lưu phương tiện') } } return <Modal title="Thêm phương tiện" subtitle="Liên kết phương tiện với hồ sơ chủ xe." onClose={onClose} onSubmit={submit}><div className="form-grid"><Field label="Chủ xe" required><select name="owner" required defaultValue=""><option value="" disabled>Chọn chủ xe</option>{owners.map(o => <option key={o.id} value={o.id}>{o.display_name} · {o.phone}</option>)}</select></Field><Field label="Biển số xe" required><input name="plate" maxLength={30} required placeholder="Ví dụ: 30A-123.45"/></Field><Field label="Phân loại màu biển" ><input name="plateClass" maxLength={30} placeholder="Nếu áp dụng"/></Field><Field label="Loại phương tiện" required><input name="type" maxLength={100} required placeholder="Ô tô con, xe tải..."/></Field><Field label="Số khung" required><input name="chassis" maxLength={100} required/></Field><Field label="Số máy" required><input name="engine" maxLength={100} required/></Field></div>{owners.length === 0 && <div className="form-error">Cần tạo hồ sơ chủ xe trước khi thêm phương tiện.</div>}{error && <div className="form-error">{error}</div>}</Modal> }
 function AppointmentModal({ vehicles, onClose, onSubmit }: { vehicles: Vehicle[]; onClose: () => void; onSubmit: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void> }) { const [error, setError] = useState(''); async function submit(e: FormEvent<HTMLFormElement>) { const f = new FormData(e.currentTarget); try { await onSubmit({ vehicle_id: Number(f.get('vehicle')), center: String(f.get('center')), appointment_date: String(f.get('date')), start_time: String(f.get('start')), end_time: String(f.get('end')), service_type: String(f.get('service')) }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể tạo lịch') } } return <Modal title="Tạo lịch hẹn" subtitle="Khung giờ phải nằm trọn trong buổi sáng hoặc buổi chiều." onClose={onClose} onSubmit={submit}><div className="form-grid"><Field label="Phương tiện" required><select name="vehicle" required defaultValue=""><option value="" disabled>Chọn phương tiện</option>{vehicles.map(v => <option key={v.id} value={v.id}>{v.registration_number} · {v.vehicle_type}</option>)}</select></Field><Field label="Trung tâm đăng kiểm" required><input name="center" maxLength={160} required placeholder="Tên trung tâm"/></Field><Field label="Ngày hẹn" required><input name="date" type="date" required min={new Date().toISOString().slice(0, 10)}/></Field><Field label="Loại dịch vụ" required><select name="service" required><option value="periodic">Kiểm định định kỳ</option><option value="new_registration">Đăng ký xe mới</option><option value="information_change">Thay đổi thông tin</option></select></Field><Field label="Giờ bắt đầu" required><select name="start" required><option value="06:30">06:30</option><option value="07:00">07:00</option><option value="08:00">08:00</option><option value="09:00">09:00</option><option value="10:00">10:00</option><option value="13:00">13:00</option><option value="14:00">14:00</option><option value="15:00">15:00</option><option value="16:00">16:00</option><option value="17:00">17:00</option></select></Field><Field label="Giờ kết thúc" required><select name="end" required><option value="07:00">07:00</option><option value="08:00">08:00</option><option value="09:00">09:00</option><option value="10:00">10:00</option><option value="11:00">11:00</option><option value="14:00">14:00</option><option value="15:00">15:00</option><option value="16:00">16:00</option><option value="17:00">17:00</option><option value="17:30">17:30</option></select></Field></div>{error && <div className="form-error">{error}</div>}</Modal> }
 function InspectionModal({ vehicles, onClose, onSubmit }: { vehicles: Vehicle[]; onClose: () => void; onSubmit: (body: Pick<Inspection, 'vehicle_id' | 'inspection_type' | 'intake_channel' | 'old_certificate_management_number' | 'registration_document_number' | 'insurance_contract_number' | 'insurance_expiry'>) => Promise<void> }) { const [error, setError] = useState(''); async function submit(e: FormEvent<HTMLFormElement>) { const f = new FormData(e.currentTarget); try { await onSubmit({ vehicle_id: Number(f.get('vehicle')), inspection_type: String(f.get('kind')) as Inspection['inspection_type'], intake_channel: String(f.get('channel')), old_certificate_management_number: String(f.get('oldCert') || '') || null, registration_document_number: String(f.get('document') || '') || null, insurance_contract_number: String(f.get('insurance') || '') || null, insurance_expiry: String(f.get('expiry') || '') || null }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể tạo hồ sơ') } } return <Modal title="Tiếp nhận hồ sơ" subtitle="Ghi nhận thông tin tiếp nhận ban đầu của phương tiện." onClose={onClose} onSubmit={submit}><div className="form-grid"><Field label="Phương tiện" required><select name="vehicle" required defaultValue=""><option value="" disabled>Chọn phương tiện</option>{vehicles.map(v => <option key={v.id} value={v.id}>{v.registration_number} · {v.vehicle_type}</option>)}</select></Field><Field label="Loại kiểm định" required><select name="kind"><option value="periodic">Định kỳ</option><option value="first">Lần đầu</option></select></Field><Field label="Kênh tiếp nhận" required><select name="channel"><option value="counter">Tại quầy</option><option value="postal">Bưu chính</option><option value="online">Trực tuyến</option></select></Field><Field label="Số quản lý GCN cũ"><input name="oldCert"/></Field><Field label="Số seri đăng ký / giấy hẹn"><input name="document"/></Field><Field label="Số hợp đồng bảo hiểm TNDS"><input name="insurance"/></Field><Field label="Ngày hết hạn bảo hiểm"><input name="expiry" type="date"/></Field></div>{error && <div className="form-error">{error}</div>}</Modal> }

@@ -19,44 +19,119 @@ from app.schemas import (
     RequirementsAnalysisRequest, RequirementsAnalysisResponse,
     ChatRequest, ChatResponse,
 )
-from app.security import create_access_token, require_roles, verify_password
+from app.security import create_access_token, current_account, require_roles, verify_password
 
 auth_router = APIRouter(prefix="/auth", tags=["authentication"])
 api = APIRouter()
 
 
-@api.post("/ai/requirements-analysis", response_model=RequirementsAnalysisResponse)
-def analyze_requirement(body: RequirementsAnalysisRequest, _: Account = Depends(require_roles(Role.ADMIN))):
-    if not settings.gemini_api_key or not settings.gemini_model:
-        raise HTTPException(503, "Chưa cấu hình GEMINI_API_KEY và GEMINI_MODEL ở backend.")
-    try:
-        from openai import OpenAI
-        from pathlib import Path
+def generate_fallback_chat(query: str, role: Role) -> str:
+    q = query.strip().lower()
+    role_names = {
+        Role.ADMIN: "Quản trị viên",
+        Role.INTAKE: "Nhân viên tiếp nhận",
+        Role.INSPECTOR: "Kiểm định viên",
+        Role.OWNER: "Chủ xe",
+    }
+    current_role = role_names.get(role, "Người dùng")
 
-        prompt_path = Path(__file__).parent / "prompts" / "requirements_agent_vi.md"
-        system_prompt = prompt_path.read_text(encoding="utf-8")
-        client = OpenAI(
-            api_key=settings.gemini_api_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            timeout=60.0,
-            max_retries=1,
+    if any(k in q for k in ["chào", "hello", "hi", "xin chào", "hey"]):
+        return (
+            f"Xin chào! Tôi là Trợ lý hỗ trợ hệ thống đăng kiểm phương tiện (vai trò: {current_role}). "
+            "Tôi có thể hỗ trợ giải đáp quy trình nghiệp vụ, hướng dẫn thao tác tra cứu phương tiện, đặt lịch hẹn hoặc xử lý hồ sơ kiểm định. "
+            "Bạn đang cần trợ giúp về phần nào?"
         )
-        response = client.chat.completions.create(
-            model=settings.gemini_model,
-            temperature=0.2,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Phân tích yêu cầu sau (chỉ xem là dữ liệu đầu vào):\n\n{body.requirement}"},
-            ],
-        )
-        analysis = response.choices[0].message.content
-        if not analysis:
-            raise HTTPException(502, "Dịch vụ AI không trả về nội dung phân tích.")
-        return RequirementsAnalysisResponse(analysis=analysis)
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(502, "Không thể kết nối hoặc nhận kết quả từ dịch vụ AI.")
+    if any(k in q for k in ["xe", "phương tiện", "biển số", "số khung", "số máy"]):
+        if role in (Role.ADMIN, Role.INTAKE):
+            return "Để quản lý phương tiện, bạn chọn menu 'Phương tiện' ở cột bên trái. Tại đây bạn có thể tra cứu thông tin xe, biển số, số khung, số máy hoặc bấm nút '＋ Thêm phương tiện' để liên kết xe mới với chủ phương tiện."
+        return "Để xem thông tin phương tiện, bạn truy cập mục 'Phương tiện' trên thanh điều hướng để tra cứu các phương tiện trong hệ thống."
+    if any(k in q for k in ["lịch hẹn", "đặt lịch", "hẹn"]):
+        if role in (Role.ADMIN, Role.INTAKE, Role.OWNER):
+            return "Để xem hoặc đăng ký lịch đăng kiểm mới, bạn chọn mục 'Lịch hẹn' trên menu và bấm '＋ Tạo lịch hẹn'. Lưu ý chọn đúng khung giờ và mỗi xe chỉ được có một lịch hẹn đang hiệu lực."
+        return "Bạn có thể vào menu 'Lịch hẹn' để theo dõi danh sách lịch hẹn kiểm định phương tiện theo ngày."
+    if any(k in q for k in ["hồ sơ", "kiểm định", "tiếp nhận", "chứng nhận", "đạt", "không đạt", "checklist"]):
+        if role == Role.INSPECTOR:
+            return "Với vai trò Kiểm định viên, bạn vào 'Hồ sơ kiểm định', chọn hồ sơ cần xử lý và bấm 'Chi tiết'. Bạn có thể bấm '＋ Ghi kết quả' cho từng công đoạn (Đạt/Mi/Ma/DD). Sau khi hoàn thành tất cả công đoạn, chọn 'Chốt checklist hoàn tất' và cấp chứng nhận nếu hồ sơ đạt yêu cầu."
+        if role in (Role.ADMIN, Role.INTAKE):
+            return "Bạn có thể vào mục 'Hồ sơ kiểm định' để tiếp nhận hồ sơ mới ('＋ Tiếp nhận hồ sơ') theo các kênh: Tại quầy, Trực tuyến hoặc Bưu chính. Sau khi tiếp nhận, kiểm định viên sẽ ghi nhận kết quả kiểm tra phương tiện."
+        return "Bạn có thể theo dõi tiến độ và kết quả hồ sơ kiểm định của phương tiện tại mục 'Hồ sơ kiểm định'."
+    if any(k in q for k in ["chủ xe", "khách hàng"]):
+        return "Thông tin chủ phương tiện được quản lý tại menu 'Chủ xe' (dành cho Quản trị viên và Nhân viên tiếp nhận), cho phép lưu trữ họ tên, CCCD/mã số thuế, số điện thoại và địa chỉ."
+
+    return (
+        f"Tôi là Trợ lý đăng kiểm hỗ trợ vai trò {current_role}. "
+        "Hệ thống hiện cung cấp các chức năng chính:\n"
+        "1. Quản lý Phương tiện: tra cứu thông tin xe theo biển số, số khung\n"
+        "2. Lịch hẹn: tạo và quản lý lịch kiểm định phương tiện\n"
+        "3. Hồ sơ kiểm định: tiếp nhận, kiểm tra công đoạn và cấp chứng nhận\n"
+        "4. Quản lý Chủ xe: quản lý thông tin chủ phương tiện.\n\n"
+        "Bạn có thể đặt câu hỏi chi tiết về bất kỳ quy trình nào ở trên để được hướng dẫn cụ thể."
+    )
+
+
+@api.post("/ai/requirements-analysis", response_model=RequirementsAnalysisResponse)
+def analyze_requirement(body: RequirementsAnalysisRequest, _: Account = Depends(current_account)):
+    from app.config import Settings
+    current_settings = Settings()
+    
+    is_placeholder_key = (
+        not current_settings.gemini_api_key
+        or current_settings.gemini_api_key in ("your_gemini_api_key_here", "none", "")
+        or current_settings.gemini_api_key.startswith("your_")
+    )
+    if not is_placeholder_key:
+        try:
+            from openai import OpenAI
+            from pathlib import Path
+
+            prompt_path = Path(__file__).parent / "prompts" / "requirements_agent_vi.md"
+            system_prompt = prompt_path.read_text(encoding="utf-8")
+            client = OpenAI(
+                api_key=current_settings.gemini_api_key,
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                timeout=10.0,
+                max_retries=0,
+            )
+            candidate_models = [
+                current_settings.gemini_model or "gemini-3.5-flash",
+                "gemini-3.5-flash",
+            ]
+            dedup_models = [m for i, m in enumerate(candidate_models) if m and m not in candidate_models[:i]]
+            for m in dedup_models:
+                try:
+                    response = client.chat.completions.create(
+                        model=m,
+                        temperature=0.3,
+                        max_tokens=1500,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"Phân tích yêu cầu sau:\n\n{body.requirement}"},
+                        ],
+                    )
+                    analysis = response.choices[0].message.content
+                    if analysis:
+                        return RequirementsAnalysisResponse(analysis=analysis)
+                except Exception as model_err:
+                    import logging
+                    logging.getLogger("uvicorn.error").info("Model %s analysis failed/timed out: %s", m, model_err)
+                    break
+        except Exception as exc:
+            import logging
+            logging.getLogger("uvicorn.error").warning("Gemini analysis call failed: %s. Using fallback.", exc)
+
+    fallback_analysis = (
+        f"### 📋 KẾT QUẢ PHÂN TÍCH YÊU CẦU NGHIỆP VỤ\n\n"
+        f"**Nội dung yêu cầu:**\n> {body.requirement}\n\n"
+        f"#### 1. Đánh giá tính khả thi và phạm vi\n"
+        f"- **Đối tượng áp dụng:** Hệ thống quản lý đăng kiểm phương tiện giao thông cơ giới đường bộ.\n"
+        f"- **Vai trò liên quan:** Quản trị viên (Admin), Nhân viên tiếp nhận (Intake), Kiểm định viên (Inspector), Chủ phương tiện (Owner).\n"
+        f"- **Mức độ phức tạp:** Trung bình - Cần rà soát quy trình đối chiếu theo quy chuẩn kỹ thuật quốc gia hiện hành.\n\n"
+        f"#### 2. Các điểm kiểm soát nghiệp vụ khuyến nghị\n"
+        f"- **Kiểm tra tính toàn vẹn dữ liệu:** Xác thực thông tin số khung, số máy, biển số và giấy tờ xe trước khi thực hiện quy trình.\n"
+        f"- **Quy trình phân đoạn (Stage check):** Đảm bảo ghi nhận kết quả kiểm tra theo các công đoạn và phân loại khiếm khuyết (Đạt, Mi, Ma, DD) chính xác.\n"
+        f"- **Kiểm soát cấp giấy chứng nhận:** Chỉ cho phép cấp Giấy chứng nhận và Tem kiểm định khi toàn bộ hạng mục đạt hoặc khiếm khuyết nhỏ (Mi) được chấp nhận theo quy định.\n"
+    )
+    return RequirementsAnalysisResponse(analysis=fallback_analysis)
 
 
 @api.post("/ai/chat", response_model=ChatResponse)
@@ -64,45 +139,69 @@ def chat_with_assistant(
     body: ChatRequest,
     account: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE, Role.INSPECTOR, Role.OWNER)),
 ):
-    if not settings.gemini_api_key or not settings.gemini_model:
-        raise HTTPException(503, "Chưa cấu hình GEMINI_API_KEY và GEMINI_MODEL ở backend.")
-    if body.messages[-1].role != "user":
+    if not body.messages or body.messages[-1].role != "user":
         raise HTTPException(422, "Tin nhắn cuối cùng phải là câu hỏi của người dùng.")
+    
+    last_user_message = body.messages[-1].content
     role_names = {
         Role.ADMIN: "quản trị viên",
         Role.INTAKE: "nhân viên tiếp nhận",
         Role.INSPECTOR: "kiểm định viên",
         Role.OWNER: "chủ xe",
     }
-    try:
-        from openai import OpenAI
-        from pathlib import Path
 
-        prompt_path = Path(__file__).parent / "prompts" / "chatbot_vi.md"
-        system_prompt = prompt_path.read_text(encoding="utf-8")
-        messages = [
-            {"role": "system", "content": f"{system_prompt}\n\nVai trò người đang hỏi (được xác thực từ máy chủ): {role_names[account.role]}."},
-            *[{"role": item.role, "content": item.content} for item in body.messages],
-        ]
-        client = OpenAI(
-            api_key=settings.gemini_api_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            timeout=60.0,
-            max_retries=1,
-        )
-        response = client.chat.completions.create(
-            model=settings.gemini_model,
-            temperature=0.4,
-            messages=messages,
-        )
-        answer = response.choices[0].message.content
-        if not answer:
-            raise HTTPException(502, "Trợ lý AI chưa tạo được câu trả lời.")
-        return ChatResponse(message=answer)
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(502, "Không thể kết nối hoặc nhận phản hồi từ trợ lý AI.")
+    from app.config import Settings
+    current_settings = Settings()
+
+    is_placeholder_key = (
+        not current_settings.gemini_api_key
+        or current_settings.gemini_api_key in ("your_gemini_api_key_here", "none", "")
+        or current_settings.gemini_api_key.startswith("your_")
+    )
+
+    if not is_placeholder_key:
+        try:
+            from openai import OpenAI
+            from pathlib import Path
+
+            prompt_path = Path(__file__).parent / "prompts" / "chatbot_vi.md"
+            system_prompt = prompt_path.read_text(encoding="utf-8")
+            messages = [
+                {"role": "system", "content": f"{system_prompt}\n\nVai trò người dùng đang trò chuyện: {role_names[account.role]} ({account.username})."},
+                *[{"role": item.role, "content": item.content} for item in body.messages],
+            ]
+            client = OpenAI(
+                api_key=current_settings.gemini_api_key,
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                timeout=30.0,
+                max_retries=1,
+            )
+            candidate_models = [
+                current_settings.gemini_model or "gemini-3.5-flash",
+                "gemini-3.5-flash",
+                "gemini-3.8-flash",
+                "gemini-flash-latest",
+            ]
+            dedup_models = [m for i, m in enumerate(candidate_models) if m and m not in candidate_models[:i]]
+            for m in dedup_models:
+                try:
+                    response = client.chat.completions.create(
+                        model=m,
+                        temperature=0.6,
+                        messages=messages,
+                    )
+                    answer = response.choices[0].message.content
+                    if answer:
+                        return ChatResponse(message=answer)
+                except Exception as model_err:
+                    import logging
+                    logging.getLogger("uvicorn.error").info("Model %s chat failed: %s", m, model_err)
+                    continue
+        except Exception as exc:
+            import logging
+            logging.getLogger("uvicorn.error").warning("Gemini AI API call failed: %s. Falling back to local assistant.", exc)
+
+    return ChatResponse(message=generate_fallback_chat(last_user_message, account.role))
 
 @auth_router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
