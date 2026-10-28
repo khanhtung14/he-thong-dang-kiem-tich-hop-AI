@@ -1,8 +1,9 @@
+import re
 from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models import AppointmentStatus, InspectionStatus, InspectionType, ItemResult, Role
 
@@ -14,6 +15,15 @@ class ORMModel(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=120)
+    password: str = Field(min_length=6, max_length=128)
+    display_name: str = Field(min_length=1, max_length=255)
+    phone: str = Field(min_length=6, max_length=30)
+    identity_or_tax_number: str | None = Field(default=None, max_length=50)
+    address: str | None = Field(default=None, max_length=500)
 
 
 class TokenResponse(BaseModel):
@@ -68,7 +78,6 @@ class VehicleRead(VehicleCreate, ORMModel):
 
 class AppointmentCreate(BaseModel):
     vehicle_id: int
-    center: str = Field(min_length=1, max_length=160)
     appointment_date: date
     start_time: time
     end_time: time
@@ -81,7 +90,10 @@ class AppointmentRead(AppointmentCreate, ORMModel):
     status: AppointmentStatus
 
 
-class InspectionCreate(BaseModel):
+OLD_CERT_REGEX = re.compile(r"^[A-Z0-9\-/]{6,30}$")
+
+
+class InspectionBase(BaseModel):
     vehicle_id: int
     inspection_type: InspectionType
     intake_channel: str = Field(min_length=1, max_length=40)
@@ -91,7 +103,31 @@ class InspectionCreate(BaseModel):
     insurance_expiry: date | None = None
 
 
-class InspectionRead(InspectionCreate, ORMModel):
+class InspectionCreate(InspectionBase):
+    @field_validator("old_certificate_management_number", mode="before")
+    @classmethod
+    def validate_old_cert(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = str(v).strip().upper()
+        if not v:
+            return None
+        if not (6 <= len(v) <= 30):
+            raise ValueError("Số quản lý GCN cũ phải có độ dài từ 6 đến 30 ký tự.")
+        if not OLD_CERT_REGEX.match(v) or not re.search(r"[A-Z0-9]", v):
+            raise ValueError(
+                "Số quản lý GCN cũ không đúng định dạng (từ 6 đến 30 ký tự, gồm chữ cái, chữ số, '-' hoặc '/')"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def validate_periodic_old_cert(self) -> "InspectionCreate":
+        if self.inspection_type == InspectionType.PERIODIC and not self.old_certificate_management_number:
+            raise ValueError("Kiểm định định kỳ bắt buộc phải có số quản lý GCN cũ")
+        return self
+
+
+class InspectionRead(InspectionBase, ORMModel):
     id: int
     code: str
     received_at: datetime
@@ -120,8 +156,8 @@ class FinalizeInspectionRequest(BaseModel):
 
 
 class CertificateCreate(BaseModel):
-    certificate_number: str = Field(min_length=1, max_length=100)
-    stamp_number: str = Field(min_length=1, max_length=100)
+    certificate_number: str | None = Field(default=None, max_length=100)
+    stamp_number: str | None = Field(default=None, max_length=100)
     issued_on: date
     expires_on: date
     cycle: str = Field(min_length=1, max_length=80)
