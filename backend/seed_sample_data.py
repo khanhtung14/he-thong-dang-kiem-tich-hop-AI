@@ -46,6 +46,13 @@ def main() -> None:
                 db.flush()
             owners.append(owner)
 
+        demo_owner_acc = db.scalar(select(Account).where(Account.username == "demo_owner"))
+        if demo_owner_acc is None:
+            demo_owner_acc = Account(username="demo_owner", password_hash=hash_password(DEMO_PASSWORD), role=Role.OWNER, owner_id=owners[0].id, is_active=True)
+            db.add(demo_owner_acc)
+            db.flush()
+        accounts["demo_owner"] = demo_owner_acc
+
         vehicle_specs = [
             (owners[0], "DEMO-51A-000.01", "Biển trắng", "DEMO-CHASSIS-0001", "DEMO-ENGINE-0001", "Ô tô con (mẫu)"),
             (owners[1], "DEMO-50H-000.02", "Biển vàng", "DEMO-CHASSIS-0002", "DEMO-ENGINE-0002", "Xe tải (mẫu)"),
@@ -62,7 +69,7 @@ def main() -> None:
 
         if db.scalar(select(Appointment).where(Appointment.code == "DEMO-APT-0001")) is None:
             appointment_day = date.today() + timedelta(days=2)
-            db.add(Appointment(code="DEMO-APT-0001", vehicle_id=vehicles[0].id, center="Trung tâm mẫu",
+            db.add(Appointment(code="DEMO-APT-0001", vehicle_id=vehicles[0].id,
                                appointment_date=appointment_day, start_time=time(8, 0), end_time=time(9, 0),
                                service_type="periodic", status=AppointmentStatus.ACTIVE, active_guard=1))
 

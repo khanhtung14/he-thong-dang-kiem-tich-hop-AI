@@ -91,7 +91,6 @@ class Appointment(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id"), index=True)
-    center: Mapped[str] = mapped_column(String(160))
     appointment_date: Mapped[date] = mapped_column(Date)
     start_time: Mapped[time] = mapped_column(Time)
     end_time: Mapped[time] = mapped_column(Time)

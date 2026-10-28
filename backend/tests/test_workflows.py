@@ -102,19 +102,19 @@ class WorkflowTests(unittest.TestCase):
     def make_appointment(self, vehicle_id=None, start=time(8, 0), end=time(9, 0)):
         return AppointmentCreate(
             vehicle_id=vehicle_id or self.vehicle_a.id,
-            center="Center A",
             appointment_date=date(2030, 5, 10),
             start_time=start,
             end_time=end,
             service_type="periodic",
         )
 
-    def make_inspection(self, vehicle_id=None):
+    def make_inspection(self, vehicle_id=None, old_cert="KD-1234567", inspection_type="periodic"):
         return create_inspection(
             InspectionCreate(
                 vehicle_id=vehicle_id or self.vehicle_a.id,
-                inspection_type="periodic",
+                inspection_type=inspection_type,
                 intake_channel="counter",
+                old_certificate_management_number=old_cert,
             ),
             self.db,
             self.intake,
@@ -292,6 +292,52 @@ class WorkflowTests(unittest.TestCase):
         audit = self.db.query(AuditEntry).filter_by(entity_type="certificate", entity_id=certificate.id).one()
         self.assertEqual(audit.action, "administrative_correction")
 
+    def test_periodic_requires_old_cert(self):
+        with self.assertRaises(Exception):
+            InspectionCreate(
+                vehicle_id=self.vehicle_a.id,
+                inspection_type="periodic",
+                intake_channel="counter",
+                old_certificate_management_number=None,
+            )
+
+    def test_old_cert_format_validation(self):
+        # Too short (< 6)
+        with self.assertRaises(Exception):
+            InspectionCreate(
+                vehicle_id=self.vehicle_a.id,
+                inspection_type="periodic",
+                intake_channel="counter",
+                old_certificate_management_number="KD12",
+            )
+        # Invalid characters
+        with self.assertRaises(Exception):
+            InspectionCreate(
+                vehicle_id=self.vehicle_a.id,
+                inspection_type="periodic",
+                intake_channel="counter",
+                old_certificate_management_number="KD@#123456",
+            )
+        # Valid format with lowercase and whitespace should be cleaned/uppercased
+        insp = InspectionCreate(
+            vehicle_id=self.vehicle_a.id,
+            inspection_type="periodic",
+            intake_channel="counter",
+            old_certificate_management_number="  kd-9876543  ",
+        )
+        self.assertEqual(insp.old_certificate_management_number, "KD-9876543")
+
+    def test_first_inspection_optional_old_cert(self):
+        # First-time inspection doesn't require old certificate number
+        insp = InspectionCreate(
+            vehicle_id=self.vehicle_a.id,
+            inspection_type="first",
+            intake_channel="counter",
+            old_certificate_management_number=None,
+        )
+        self.assertIsNone(insp.old_certificate_management_number)
+
 
 if __name__ == "__main__":
     unittest.main()
+
