@@ -13,29 +13,55 @@ from app.models import (
 from app.security import hash_password
 
 
-DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "DemoOnly123!")
+DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "123")
 
 
 def main() -> None:
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
+        # Migration from old demo names if they exist
+        rename_map = {
+            "demo_admin": "admin",
+            "demo_intake": "tiepnhanhoso",
+            "demo_inspector": "kiemdinhvien",
+            "demo_owner": "chuxe",
+        }
+        for old_u, new_u in rename_map.items():
+            old_acc = db.scalar(select(Account).where(Account.username == old_u))
+            new_acc = db.scalar(select(Account).where(Account.username == new_u))
+            if old_acc and not new_acc:
+                old_acc.username = new_u
+                old_acc.password_hash = hash_password(DEMO_PASSWORD)
+            elif old_acc and new_acc:
+                new_acc.password_hash = hash_password(DEMO_PASSWORD)
+                db.delete(old_acc)
+        db.flush()
+
         demo_users = {
-            "demo_admin": Role.ADMIN,
-            "demo_intake": Role.INTAKE,
-            "demo_inspector": Role.INSPECTOR,
+            "admin": (Role.ADMIN, "admin@kiemdinh.gov.vn", "Quản Trị Viên"),
+            "tiepnhanhoso": (Role.INTAKE, "tiepnhan@kiemdinh.gov.vn", "Tiếp Nhận Hồ Sơ"),
+            "kiemdinhvien": (Role.INSPECTOR, "kiemdinh@kiemdinh.gov.vn", "Kiểm Định Viên"),
         }
         accounts: dict[str, Account] = {}
-        for username, role in demo_users.items():
+        for username, (role, email, dname) in demo_users.items():
             account = db.scalar(select(Account).where(Account.username == username))
             if account is None:
-                account = Account(username=username, password_hash=hash_password(DEMO_PASSWORD), role=role, is_active=True)
+                account = Account(username=username, password_hash=hash_password(DEMO_PASSWORD), role=role, is_active=True, email=email, display_name=dname)
                 db.add(account)
                 db.flush()
+            else:
+                account.password_hash = hash_password(DEMO_PASSWORD)
+                account.role = role
+                account.is_active = True
+                if not account.email:
+                    account.email = email
+                if not account.display_name:
+                    account.display_name = dname
             accounts[username] = account
 
         owner_specs = [
-            ("Nguyễn Minh An (DỮ LIỆU MẪU)", "DEMO-ID-0001", "0900000001", "Địa chỉ mẫu, không dùng cho giao dịch thực"),
-            ("Công ty Vận tải Mẫu (DỮ LIỆU MẪU)", "DEMO-TAX-0002", "0900000002", "Địa chỉ doanh nghiệp mẫu"),
+            ("Nguyễn Minh An", "DEMO-ID-0001", "0900000001", "123 Nguyễn Văn Cừ, Quận 5, TP.HCM"),
+            ("Công ty Vận tải An Phát", "DEMO-TAX-0002", "0900000002", "456 Lê Duẩn, Quận 1, TP.HCM"),
         ]
         owners: list[Owner] = []
         for name, identity, phone, address in owner_specs:
@@ -46,16 +72,23 @@ def main() -> None:
                 db.flush()
             owners.append(owner)
 
-        demo_owner_acc = db.scalar(select(Account).where(Account.username == "demo_owner"))
-        if demo_owner_acc is None:
-            demo_owner_acc = Account(username="demo_owner", password_hash=hash_password(DEMO_PASSWORD), role=Role.OWNER, owner_id=owners[0].id, is_active=True)
-            db.add(demo_owner_acc)
+        chuxe_acc = db.scalar(select(Account).where(Account.username == "chuxe"))
+        if chuxe_acc is None:
+            chuxe_acc = Account(username="chuxe", password_hash=hash_password(DEMO_PASSWORD), role=Role.OWNER, owner_id=owners[0].id, is_active=True, email="chuxe@gmail.com", display_name="Nguyễn Minh An")
+            db.add(chuxe_acc)
             db.flush()
-        accounts["demo_owner"] = demo_owner_acc
+        else:
+            chuxe_acc.password_hash = hash_password(DEMO_PASSWORD)
+            chuxe_acc.is_active = True
+            if not chuxe_acc.email:
+                chuxe_acc.email = "chuxe@gmail.com"
+            if not chuxe_acc.display_name:
+                chuxe_acc.display_name = "Nguyễn Minh An"
+        accounts["chuxe"] = chuxe_acc
 
         vehicle_specs = [
-            (owners[0], "DEMO-51A-000.01", "Biển trắng", "DEMO-CHASSIS-0001", "DEMO-ENGINE-0001", "Ô tô con (mẫu)"),
-            (owners[1], "DEMO-50H-000.02", "Biển vàng", "DEMO-CHASSIS-0002", "DEMO-ENGINE-0002", "Xe tải (mẫu)"),
+            (owners[0], "DEMO-51A-000.01", "Biển trắng", "DEMO-CHASSIS-0001", "DEMO-ENGINE-0001", "Ô tô con"),
+            (owners[1], "DEMO-50H-000.02", "Biển vàng", "DEMO-CHASSIS-0002", "DEMO-ENGINE-0002", "Xe tải"),
         ]
         vehicles: list[Vehicle] = []
         for owner, plate, plate_class, chassis, engine_number, vehicle_type in vehicle_specs:
@@ -97,14 +130,14 @@ def main() -> None:
         )) is None:
             db.add(InspectionItem(inspection_id=second_inspection.id, stage=1,
                 item_code="DEMO-IDENTIFICATION", result=ItemResult.PASS,
-                inspector_account_id=accounts["demo_inspector"].id,
+                inspector_account_id=accounts["kiemdinhvien"].id,
                 recorded_at=datetime.now(timezone.utc).replace(tzinfo=None)))
 
         db.commit()
 
     print("Sample data is ready (synthetic records are marked DEMO).")
-    print(f"Demo usernames: {', '.join(demo_users)}")
-    print("Demo password: set DEMO_PASSWORD before running, otherwise DemoOnly123!")
+    print(f"Usernames: {', '.join(demo_users)}, chuxe")
+    print("Password: 123")
     print("No certificate, payment confirmation, or legal eligibility was seeded.")
 
 

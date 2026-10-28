@@ -1,4 +1,7 @@
-from datetime import date, datetime, time, timezone
+from app.email_service import send_otp_email
+from datetime import date, datetime, time, timezone, timedelta
+import logging
+import random
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -17,7 +20,11 @@ from app.schemas import (
     InspectionRead, ItemResultCreate, ItemResultRead, LoginRequest, OwnerCreate, OwnerRead,
     FinalizeInspectionRequest, RegisterRequest, TokenResponse, VehicleCreate, VehicleRead,
     RequirementsAnalysisRequest, RequirementsAnalysisResponse,
-    ChatRequest, ChatResponse,
+    ChatRequest, ChatResponse, ProfileResponse, ProfileUpdateRequest,
+    AccountListItem, AccountRoleUpdateRequest, AccountStatusUpdateRequest,
+    AccountCreateAdminRequest, AccountResetPasswordRequest, AccountProfileUpdateAdminRequest,
+    ForgotPasswordRequest, ForgotPasswordResponse, ResetPasswordWithOtpRequest,
+    VerifyOtpOnlyRequest,
 )
 from app.security import create_access_token, current_account, hash_password, require_roles, verify_password
 
@@ -525,9 +532,31 @@ def chat_with_assistant(
 
 @auth_router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
-    account = db.scalar(select(Account).where(Account.username == body.username))
-    if not account or not account.is_active or not verify_password(body.password, account.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid username or password", headers={"WWW-Authenticate": "Bearer"})
+    clean_u = body.username.strip()
+    account = db.scalar(select(Account).where(func.lower(Account.username) == clean_u.lower()))
+    if not account:
+        account = db.scalar(select(Account).where(Account.username == clean_u))
+
+    if not account:
+        raise HTTPException(
+            status_code=401,
+            detail="Tên đăng nhập hoặc mật khẩu không đúng.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not account.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản của bạn đang bị khóa.",
+        )
+
+    if not verify_password(body.password, account.password_hash):
+        raise HTTPException(
+            status_code=401,
+            detail="Tên đăng nhập hoặc mật khẩu không đúng.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     return TokenResponse(access_token=create_access_token(account))
 
 
@@ -537,6 +566,17 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     existing = db.scalar(select(Account).where(Account.username == clean_username))
     if existing:
         raise HTTPException(status_code=400, detail="Tên đăng nhập đã tồn tại. Vui lòng chọn tên đăng nhập khác.")
+
+    clean_email = body.email.strip().lower()
+    if not clean_email or "@" not in clean_email or "." not in clean_email:
+        raise HTTPException(status_code=400, detail="Vui lòng nhập địa chỉ email hợp lệ.")
+
+    existing_email = db.scalar(select(Account).where(func.lower(Account.email) == clean_email))
+    if existing_email:
+        raise HTTPException(
+            status_code=400,
+            detail="Email này đã được sử dụng cho một tài khoản khác. Vui lòng đăng nhập hoặc sử dụng email khác."
+        )
 
     clean_identity = (body.identity_or_tax_number or "").strip()
     if not clean_identity:
@@ -557,6 +597,9 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
         password_hash=hash_password(body.password),
         role=Role.OWNER,
         owner_id=owner.id,
+        display_name=body.display_name.strip(),
+        email=clean_email,
+        phone=body.phone.strip(),
         is_active=True,
     )
     db.add(account)
@@ -564,6 +607,234 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     db.refresh(account)
 
     return TokenResponse(access_token=create_access_token(account))
+
+
+# In-memory store for reset password OTPs: email.lower() -> {"code": "123456", "expires_at": datetime, "attempts": 0, "account_id": id}
+_password_reset_otps: dict[str, dict] = {}
+
+
+@auth_router.post("/forgot-password/send-otp", response_model=ForgotPasswordResponse)
+def send_forgot_password_otp(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    clean_email = body.email.strip().lower()
+    if not clean_email or "@" not in clean_email:
+        raise HTTPException(status_code=400, detail="Vui lòng nhập định dạng email hợp lệ.")
+
+    account = db.scalar(select(Account).where(func.lower(Account.email) == clean_email))
+    if not account:
+        raise HTTPException(
+            status_code=404,
+            detail="Không tìm thấy tài khoản nào được liên kết với email này. Vui lòng kiểm tra lại.",
+        )
+
+    if not account.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Tài khoản này hiện đang bị tạm khóa. Vui lòng liên hệ quản trị viên.",
+        )
+
+    # Tạo mã OTP 6 chữ số
+    otp_code = f"{random.randint(100000, 999999)}"
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+    _password_reset_otps[clean_email] = {
+        "code": otp_code,
+        "expires_at": expires_at,
+        "attempts": 0,
+        "account_id": account.id,
+    }
+
+    logger = logging.getLogger("uvicorn.error")
+    logger.info("[FORGOT_PASSWORD] Đang gửi OTP cho email '%s' (tài khoản: '%s')", clean_email, account.username)
+
+    # Gửi email thực tế qua SMTP
+    try:
+        send_otp_email(to_email=clean_email, otp_code=otp_code, username=account.display_name or account.username)
+    except Exception as exc:
+        logger.error("[FORGOT_PASSWORD] Không thể gửi email: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"{str(exc)}",
+        )
+
+    return ForgotPasswordResponse(
+        message=f"Mã xác nhận 6 chữ số đã được gửi tới email {clean_email}. Vui lòng kiểm tra hộp thư đến (hoặc thư rác/spam).",
+        email=clean_email,
+        username=account.username,
+        display_name=account.display_name or account.username,
+        dev_code=None,
+    )
+
+
+@auth_router.post("/forgot-password/verify-otp")
+def verify_otp_only(body: VerifyOtpOnlyRequest):
+    clean_email = body.email.strip().lower()
+    clean_code = body.otp_code.strip()
+
+    otp_data = _password_reset_otps.get(clean_email)
+    if not otp_data:
+        raise HTTPException(
+            status_code=400,
+            detail="Chưa có yêu cầu đặt lại mật khẩu hoặc mã xác nhận đã hết hiệu lực. Vui lòng yêu cầu gửi mã mới.",
+        )
+
+    if datetime.now(timezone.utc) > otp_data["expires_at"]:
+        _password_reset_otps.pop(clean_email, None)
+        raise HTTPException(
+            status_code=400,
+            detail="Mã xác nhận đã hết hạn (quá 10 phút). Vui lòng yêu cầu gửi mã mới.",
+        )
+
+    if otp_data["code"] != clean_code:
+        otp_data["attempts"] += 1
+        if otp_data["attempts"] >= 5:
+            _password_reset_otps.pop(clean_email, None)
+            raise HTTPException(
+                status_code=400,
+                detail="Bạn đã nhập sai mã xác nhận quá 5 lần. Mã đã bị hủy để đảm bảo an toàn.",
+            )
+        remaining = 5 - otp_data["attempts"]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Mã xác nhận không đúng. Bạn còn {remaining} lần thử lại.",
+        )
+
+    otp_data["verified"] = True
+    return {"message": "Mã xác nhận chính xác. Vui lòng nhập mật khẩu mới.", "verified": True}
+
+
+@auth_router.post("/forgot-password/verify-and-reset")
+def verify_otp_and_reset_password(body: ResetPasswordWithOtpRequest, db: Session = Depends(get_db)):
+    clean_email = body.email.strip().lower()
+    clean_code = body.otp_code.strip()
+
+    otp_data = _password_reset_otps.get(clean_email)
+    if not otp_data:
+        raise HTTPException(
+            status_code=400,
+            detail="Chưa có yêu cầu đặt lại mật khẩu hoặc mã xác nhận đã hết hiệu lực. Vui lòng yêu cầu gửi mã mới.",
+        )
+
+    if datetime.now(timezone.utc) > otp_data["expires_at"]:
+        _password_reset_otps.pop(clean_email, None)
+        raise HTTPException(
+            status_code=400,
+            detail="Mã xác nhận đã hết hạn (quá 10 phút). Vui lòng yêu cầu gửi mã mới.",
+        )
+
+    if not otp_data.get("verified") and otp_data["code"] != clean_code:
+        otp_data["attempts"] += 1
+        if otp_data["attempts"] >= 5:
+            _password_reset_otps.pop(clean_email, None)
+            raise HTTPException(
+                status_code=400,
+                detail="Bạn đã nhập sai mã xác nhận quá 5 lần. Mã đã bị hủy để đảm bảo an toàn.",
+            )
+        remaining = 5 - otp_data["attempts"]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Mã xác nhận không đúng. Bạn còn {remaining} lần thử lại.",
+        )
+
+    if len(body.new_password) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail="Mật khẩu mới phải có độ dài tối thiểu 6 ký tự.",
+        )
+
+    account = db.scalar(select(Account).where(func.lower(Account.email) == clean_email))
+    if not account:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản người dùng.")
+
+    account.password_hash = hash_password(body.new_password)
+    db.commit()
+
+    # Xóa OTP sau khi đổi mật khẩu thành công
+    _password_reset_otps.pop(clean_email, None)
+
+    return {"message": "Đặt lại mật khẩu thành công! Bây giờ bạn có thể đăng nhập bằng mật khẩu mới."}
+
+
+@api.get("/profile", response_model=ProfileResponse)
+def get_user_profile(account: Account = Depends(current_account), db: Session = Depends(get_db)):
+    disp_name = account.display_name
+    ph = account.phone
+    if account.owner_id:
+        owner = db.get(Owner, account.owner_id)
+        if owner:
+            if not disp_name:
+                disp_name = owner.display_name
+            if not ph:
+                ph = owner.phone
+    return ProfileResponse(
+        id=account.id,
+        username=account.username,
+        role=account.role,
+        display_name=disp_name,
+        email=account.email,
+        phone=ph,
+        avatar_url=account.avatar_url,
+    )
+
+
+@api.put("/profile", response_model=ProfileResponse)
+def update_user_profile(
+    body: ProfileUpdateRequest,
+    account: Account = Depends(current_account),
+    db: Session = Depends(get_db),
+):
+    if body.new_password:
+        if not body.current_password:
+            raise HTTPException(status_code=400, detail="Vui lòng nhập mật khẩu hiện tại để đổi mật khẩu.")
+        if not verify_password(body.current_password, account.password_hash):
+            raise HTTPException(status_code=400, detail="Mật khẩu hiện tại không chính xác.")
+        if len(body.new_password) < 6:
+            raise HTTPException(status_code=400, detail="Mật khẩu mới phải có ít nhất 6 ký tự.")
+        account.password_hash = hash_password(body.new_password)
+
+    if body.display_name is not None:
+        clean_name = body.display_name.strip()
+        account.display_name = clean_name or None
+        if account.owner_id:
+            owner = db.get(Owner, account.owner_id)
+            if owner and clean_name:
+                owner.display_name = clean_name
+
+    if body.email is not None:
+        account.email = body.email.strip() or None
+
+    if body.phone is not None:
+        clean_phone = body.phone.strip()
+        account.phone = clean_phone or None
+        if account.owner_id:
+            owner = db.get(Owner, account.owner_id)
+            if owner and clean_phone:
+                owner.phone = clean_phone
+
+    if body.avatar_url is not None:
+        account.avatar_url = body.avatar_url.strip() or None
+
+    db.commit()
+    db.refresh(account)
+
+    disp_name = account.display_name
+    ph = account.phone
+    if account.owner_id:
+        owner = db.get(Owner, account.owner_id)
+        if owner:
+            if not disp_name:
+                disp_name = owner.display_name
+            if not ph:
+                ph = owner.phone
+
+    return ProfileResponse(
+        id=account.id,
+        username=account.username,
+        role=account.role,
+        display_name=disp_name,
+        email=account.email,
+        phone=ph,
+        avatar_url=account.avatar_url,
+    )
 
 
 def get_owner_for_account(db: Session, account: Account) -> Owner | None:
@@ -596,10 +867,22 @@ def list_owners(db: Session = Depends(get_db), _: Account = Depends(require_role
 
 
 @api.post("/vehicles", response_model=VehicleRead, status_code=201)
-def create_vehicle(body: VehicleCreate, db: Session = Depends(get_db), _: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE))):
-    if db.get(Owner, body.owner_id) is None:
+def create_vehicle(body: VehicleCreate, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE, Role.OWNER))):
+    target_owner_id = body.owner_id
+    if account.role == Role.OWNER:
+        if not account.owner_id:
+            raise HTTPException(400, "Tài khoản chủ xe chưa được liên kết với hồ sơ chủ xe")
+        target_owner_id = account.owner_id
+    else:
+        if target_owner_id is None:
+            raise HTTPException(400, "Vui lòng chọn chủ xe cho phương tiện")
+
+    if db.get(Owner, target_owner_id) is None:
         raise HTTPException(404, "Owner not found")
-    vehicle = Vehicle(**body.model_dump())
+
+    vehicle_data = body.model_dump()
+    vehicle_data["owner_id"] = target_owner_id
+    vehicle = Vehicle(**vehicle_data)
     db.add(vehicle)
     db.commit()
     db.refresh(vehicle)
@@ -780,3 +1063,282 @@ def correct_certificate(certificate_id: int, body: CertificateCreate, db: Sessio
     db.commit()
     db.refresh(certificate)
     return certificate
+
+
+# ---------------------------------------------------------------------------
+# ADMIN SYSTEM ROLE & ACCOUNT MANAGEMENT
+# ---------------------------------------------------------------------------
+
+@api.get("/admin/accounts", response_model=list[AccountListItem])
+def list_system_accounts(
+    admin: Account = Depends(require_roles(Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    accounts = db.scalars(select(Account).order_by(Account.id.asc())).all()
+    results = []
+    for acc in accounts:
+        disp = acc.display_name
+        ph = acc.phone
+        if acc.owner_id:
+            owner = db.get(Owner, acc.owner_id)
+            if owner:
+                if not disp:
+                    disp = owner.display_name
+                if not ph:
+                    ph = owner.phone
+        results.append(
+            AccountListItem(
+                id=acc.id,
+                username=acc.username,
+                role=acc.role,
+                is_active=acc.is_active,
+                display_name=disp,
+                email=acc.email,
+                phone=ph,
+                avatar_url=acc.avatar_url,
+                owner_id=acc.owner_id,
+            )
+        )
+    return results
+
+
+@api.put("/admin/accounts/{account_id}/role", response_model=AccountListItem)
+def update_account_role(
+    account_id: int,
+    body: AccountRoleUpdateRequest,
+    admin: Account = Depends(require_roles(Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    account = db.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
+    if account.id == admin.id and body.role != Role.ADMIN:
+        raise HTTPException(status_code=400, detail="Không thể tự giáng quyền tài khoản quản trị của chính bạn.")
+
+    if body.role == Role.ADMIN and account.role != Role.ADMIN:
+        admin_count = db.scalar(
+            select(func.count(Account.id)).where(Account.role == Role.ADMIN, Account.id != account.id)
+        ) or 0
+        if admin_count >= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Hệ thống chỉ cho phép duy nhất 1 tài khoản Quản trị viên. Không thể phân quyền Quản trị viên cho tài khoản thứ hai.",
+            )
+
+    account.role = body.role
+    db.commit()
+    db.refresh(account)
+
+    disp = account.display_name
+    ph = account.phone
+    if account.owner_id:
+        owner = db.get(Owner, account.owner_id)
+        if owner:
+            if not disp:
+                disp = owner.display_name
+            if not ph:
+                ph = owner.phone
+
+    return AccountListItem(
+        id=account.id,
+        username=account.username,
+        role=account.role,
+        is_active=account.is_active,
+        display_name=disp,
+        email=account.email,
+        phone=ph,
+        avatar_url=account.avatar_url,
+        owner_id=account.owner_id,
+    )
+
+
+@api.put("/admin/accounts/{account_id}/status", response_model=AccountListItem)
+def update_account_status(
+    account_id: int,
+    body: AccountStatusUpdateRequest,
+    admin: Account = Depends(require_roles(Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    account = db.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
+    if account.id == admin.id and not body.is_active:
+        raise HTTPException(status_code=400, detail="Không thể tự khóa tài khoản quản trị của chính bạn.")
+
+    account.is_active = body.is_active
+    db.commit()
+    db.refresh(account)
+
+    disp = account.display_name
+    ph = account.phone
+    if account.owner_id:
+        owner = db.get(Owner, account.owner_id)
+        if owner:
+            if not disp:
+                disp = owner.display_name
+            if not ph:
+                ph = owner.phone
+
+    return AccountListItem(
+        id=account.id,
+        username=account.username,
+        role=account.role,
+        is_active=account.is_active,
+        display_name=disp,
+        email=account.email,
+        phone=ph,
+        avatar_url=account.avatar_url,
+        owner_id=account.owner_id,
+    )
+
+
+@api.post("/admin/accounts", response_model=AccountListItem, status_code=status.HTTP_201_CREATED)
+def create_system_account(
+    body: AccountCreateAdminRequest,
+    admin: Account = Depends(require_roles(Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    clean_username = body.username.strip().lower()
+    existing = db.scalar(select(Account).where(Account.username == clean_username))
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Tên đăng nhập '{clean_username}' đã được sử dụng.")
+
+    if body.role == Role.ADMIN:
+        admin_count = db.scalar(select(func.count(Account.id)).where(Account.role == Role.ADMIN)) or 0
+        if admin_count >= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Hệ thống chỉ cho phép duy nhất 1 tài khoản Quản trị viên. Không thể tạo thêm Quản trị viên mới.",
+            )
+
+    new_acc = Account(
+        username=clean_username,
+        password_hash=hash_password(body.password),
+        role=body.role,
+        is_active=True,
+        display_name=body.display_name.strip() if body.display_name else None,
+        email=body.email.strip() if body.email else None,
+        phone=body.phone.strip() if body.phone else None,
+    )
+    db.add(new_acc)
+    db.commit()
+    db.refresh(new_acc)
+
+    return AccountListItem(
+        id=new_acc.id,
+        username=new_acc.username,
+        role=new_acc.role,
+        is_active=new_acc.is_active,
+        display_name=new_acc.display_name,
+        email=new_acc.email,
+        phone=new_acc.phone,
+        avatar_url=new_acc.avatar_url,
+        owner_id=new_acc.owner_id,
+    )
+
+
+@api.put("/admin/accounts/{account_id}/profile", response_model=AccountListItem)
+def update_account_profile_admin(
+    account_id: int,
+    body: AccountProfileUpdateAdminRequest,
+    admin: Account = Depends(require_roles(Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    account = db.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
+
+    clean_email = (body.email or "").strip().lower() or None
+    if clean_email:
+        if "@" not in clean_email or "." not in clean_email:
+            raise HTTPException(status_code=400, detail="Vui lòng nhập định dạng email hợp lệ.")
+        existing_email = db.scalar(
+            select(Account).where(func.lower(Account.email) == clean_email, Account.id != account_id)
+        )
+        if existing_email:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Email '{clean_email}' đã được đăng ký cho tài khoản khác.",
+            )
+
+    account.display_name = (body.display_name or "").strip() or None
+    account.email = clean_email
+    account.phone = (body.phone or "").strip() or None
+
+    if account.owner_id:
+        owner = db.get(Owner, account.owner_id)
+        if owner:
+            if account.display_name:
+                owner.display_name = account.display_name
+            if account.phone:
+                owner.phone = account.phone
+
+    db.commit()
+    db.refresh(account)
+
+    disp = account.display_name
+    ph = account.phone
+    if account.owner_id:
+        owner = db.get(Owner, account.owner_id)
+        if owner:
+            if not disp:
+                disp = owner.display_name
+            if not ph:
+                ph = owner.phone
+
+    return AccountListItem(
+        id=account.id,
+        username=account.username,
+        role=account.role,
+        is_active=account.is_active,
+        display_name=disp,
+        email=account.email,
+        phone=ph,
+        avatar_url=account.avatar_url,
+        owner_id=account.owner_id,
+    )
+
+
+@api.post("/admin/accounts/{account_id}/reset-password")
+def reset_account_password(
+    account_id: int,
+    body: AccountResetPasswordRequest,
+    admin: Account = Depends(require_roles(Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    account = db.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
+    account.password_hash = hash_password(body.new_password)
+    db.commit()
+    return {"message": f"Đặt lại mật khẩu cho tài khoản '{account.username}' thành công."}
+
+
+@api.delete("/admin/accounts/{account_id}")
+def delete_account(
+    account_id: int,
+    admin: Account = Depends(require_roles(Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    account = db.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
+    if account.id == admin.id:
+        raise HTTPException(status_code=400, detail="Không thể xóa tài khoản quản trị của chính bạn.")
+    if account.role == Role.ADMIN:
+        raise HTTPException(status_code=400, detail="Không thể xóa tài khoản Quản trị viên hệ thống.")
+
+    username = account.username
+    try:
+        db.delete(account)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Không thể xóa tài khoản này do đã có dữ liệu đo kiểm hoặc lịch sử nghiệp vụ liên kết. Bạn có thể sử dụng chức năng Khóa tài khoản.",
+        )
+
+    return {"message": f"Đã xóa vĩnh viễn tài khoản '@{username}' thành công."}
+
+

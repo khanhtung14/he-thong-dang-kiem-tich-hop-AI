@@ -1,5 +1,6 @@
 from datetime import date, time
 import unittest
+from unittest import mock
 
 from fastapi import HTTPException
 from jose import jwt
@@ -21,6 +22,18 @@ from app.routers import (
     list_vehicles,
     login,
     record_result,
+    list_system_accounts,
+    update_account_role,
+    update_account_status,
+    create_system_account,
+    reset_account_password,
+    update_account_profile_admin,
+    delete_account,
+    send_forgot_password_otp,
+    verify_otp_only,
+    verify_otp_and_reset_password,
+    _password_reset_otps,
+    register,
 )
 from app.schemas import (
     AppointmentCreate,
@@ -29,6 +42,15 @@ from app.schemas import (
     InspectionCreate,
     ItemResultCreate,
     LoginRequest,
+    AccountRoleUpdateRequest,
+    AccountStatusUpdateRequest,
+    AccountCreateAdminRequest,
+    AccountResetPasswordRequest,
+    AccountProfileUpdateAdminRequest,
+    ForgotPasswordRequest,
+    VerifyOtpOnlyRequest,
+    ResetPasswordWithOtpRequest,
+    RegisterRequest,
 )
 from app.security import hash_password, require_roles
 from app.config import settings
@@ -165,6 +187,16 @@ class WorkflowTests(unittest.TestCase):
             401,
             lambda: login(LoginRequest(username="owner-a", password="wrong-password"), self.db),
         )
+
+    def test_locked_account_login_returns_403(self):
+        self.owner_account.is_active = False
+        self.db.commit()
+        with self.assertRaises(HTTPException) as ctx:
+            login(LoginRequest(username="owner-a", password="test-password-long-enough"), self.db)
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertIn("đang bị khóa", ctx.exception.detail)
+        self.owner_account.is_active = True
+        self.db.commit()
 
     def test_removed_roles_are_not_available(self):
         self.assertEqual({role.value for role in Role}, {"admin", "intake", "inspector", "owner"})
@@ -336,6 +368,217 @@ class WorkflowTests(unittest.TestCase):
             old_certificate_management_number=None,
         )
         self.assertIsNone(insp.old_certificate_management_number)
+
+    def test_admin_account_management(self):
+        # List accounts
+        accounts = list_system_accounts(admin=self.admin, db=self.db)
+        self.assertTrue(len(accounts) >= 4)
+
+        # Create new account
+        new_req = AccountCreateAdminRequest(
+            username="new_inspector_user",
+            password="securePassword123",
+            role=Role.INSPECTOR,
+            display_name="KTV Nguyễn Văn A",
+            email="ktva@kiemdinh.vn",
+            phone="0912345678",
+        )
+        created = create_system_account(body=new_req, admin=self.admin, db=self.db)
+        self.assertEqual(created.username, "new_inspector_user")
+        self.assertEqual(created.role, Role.INSPECTOR)
+        self.assertTrue(created.is_active)
+
+        # Update role
+        role_req = AccountRoleUpdateRequest(role=Role.INTAKE)
+        updated = update_account_role(account_id=created.id, body=role_req, admin=self.admin, db=self.db)
+        self.assertEqual(updated.role, Role.INTAKE)
+
+        # Single admin rule: cannot promote a second account to ADMIN
+        admin_role_req = AccountRoleUpdateRequest(role=Role.ADMIN)
+        with self.assertRaises(HTTPException) as ctx:
+            update_account_role(account_id=created.id, body=admin_role_req, admin=self.admin, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("chỉ cho phép duy nhất 1 tài khoản Quản trị viên", ctx.exception.detail)
+
+        # Single admin rule: cannot create a new account with ADMIN role
+        new_admin_req = AccountCreateAdminRequest(
+            username="second_admin",
+            password="password123",
+            role=Role.ADMIN,
+        )
+        with self.assertRaises(HTTPException) as ctx:
+            create_system_account(body=new_admin_req, admin=self.admin, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("chỉ cho phép duy nhất 1 tài khoản Quản trị viên", ctx.exception.detail)
+
+        # Self-demotion prevention
+        with self.assertRaises(HTTPException) as ctx:
+            update_account_role(account_id=self.admin.id, body=role_req, admin=self.admin, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 400)
+
+        # Toggle status (lock account)
+        status_req = AccountStatusUpdateRequest(is_active=False)
+        updated_status = update_account_status(account_id=created.id, body=status_req, admin=self.admin, db=self.db)
+        self.assertFalse(updated_status.is_active)
+
+        # Reset password
+        pw_req = AccountResetPasswordRequest(new_password="newSecretPassword123")
+        res = reset_account_password(account_id=created.id, body=pw_req, admin=self.admin, db=self.db)
+        self.assertIn("thành công", res["message"])
+
+        # Delete account: Cannot delete self
+        with self.assertRaises(HTTPException) as ctx:
+            delete_account(account_id=self.admin.id, admin=self.admin, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 400)
+
+        # Delete account: Delete created account
+        del_res = delete_account(account_id=created.id, admin=self.admin, db=self.db)
+        self.assertIn("thành công", del_res["message"])
+
+    @mock.patch("app.routers.send_otp_email")
+    def test_forgot_password_flow(self, mock_send_email):
+        # Set email for admin account
+        self.admin.email = "admin_test@kiemdinh.gov.vn"
+        self.db.commit()
+
+        # Step 1: Send OTP with invalid email
+        with self.assertRaises(HTTPException) as ctx:
+            send_forgot_password_otp(ForgotPasswordRequest(email="nonexistent@kiemdinh.gov.vn"), db=self.db)
+        self.assertEqual(ctx.exception.status_code, 404)
+
+        # Step 1: Send OTP with valid email
+        otp_res = send_forgot_password_otp(ForgotPasswordRequest(email="admin_test@kiemdinh.gov.vn"), db=self.db)
+        mock_send_email.assert_called_once()
+        self.assertIn("admin_test@kiemdinh.gov.vn", otp_res.message)
+        otp_code = _password_reset_otps["admin_test@kiemdinh.gov.vn"]["code"]
+        self.assertEqual(len(otp_code), 6)
+
+        # Step 2: Verify with wrong code via verify_otp_only
+        with self.assertRaises(HTTPException) as ctx2:
+            verify_otp_only(
+                VerifyOtpOnlyRequest(
+                    email="admin_test@kiemdinh.gov.vn",
+                    otp_code="000000",
+                )
+            )
+        self.assertEqual(ctx2.exception.status_code, 400)
+
+        # Step 2: Verify with correct code via verify_otp_only
+        verify_res = verify_otp_only(
+            VerifyOtpOnlyRequest(
+                email="admin_test@kiemdinh.gov.vn",
+                otp_code=otp_code,
+            )
+        )
+        self.assertTrue(verify_res["verified"])
+
+        # Step 3: Reset password
+        reset_res = verify_otp_and_reset_password(
+            ResetPasswordWithOtpRequest(
+                email="admin_test@kiemdinh.gov.vn",
+                otp_code=otp_code,
+                new_password="BrandNewPass123!"
+            ),
+            db=self.db
+        )
+        self.assertIn("thành công", reset_res["message"])
+
+        # Check login with new password
+        login_res = login(LoginRequest(username="admin", password="BrandNewPass123!"), db=self.db)
+        self.assertTrue(login_res.access_token)
+
+    def test_owner_registration_with_required_email(self):
+        # 1. Register without valid email raises 400
+        with self.assertRaises(HTTPException) as ctx:
+            register(
+                RegisterRequest(
+                    username="new_owner_1",
+                    password="password123",
+                    display_name="Nguyen Van A",
+                    email="invalid-email",
+                    phone="0911222333",
+                ),
+                db=self.db
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+
+        # 2. Register with valid required email succeeds
+        res = register(
+            RegisterRequest(
+                username="new_owner_1",
+                password="password123",
+                display_name="Nguyen Van A",
+                email="owner1@example.com",
+                phone="0911222333",
+            ),
+            db=self.db
+        )
+        self.assertTrue(res.access_token)
+
+        # Verify account created with email in DB
+        acc = self.db.query(Account).filter(Account.username == "new_owner_1").first()
+        self.assertIsNotNone(acc)
+        self.assertEqual(acc.email, "owner1@example.com")
+        self.assertEqual(acc.role, Role.OWNER)
+
+        # 3. Duplicate email raises 400
+        with self.assertRaises(HTTPException) as ctx_dup:
+            register(
+                RegisterRequest(
+                    username="new_owner_2",
+                    password="password123",
+                    display_name="Nguyen Van B",
+                    email="owner1@example.com",
+                    phone="0988777666",
+                ),
+                db=self.db
+            )
+        self.assertEqual(ctx_dup.exception.status_code, 400)
+        self.assertIn("đã được sử dụng", ctx_dup.exception.detail)
+
+    def test_admin_update_account_profile(self):
+        admin_acc = self.db.query(Account).filter(Account.username == "admin").first()
+        target_acc = self.db.query(Account).filter(Account.username == "inspector").first()
+
+        # 1. Update with valid profile info
+        updated = update_account_profile_admin(
+            account_id=target_acc.id,
+            body=AccountProfileUpdateAdminRequest(
+                display_name="Kiểm Định Viên Trưởng Chuyền",
+                email="kiemdinh_truong@kiemdinh.gov.vn",
+                phone="0911999888",
+            ),
+            admin=admin_acc,
+            db=self.db,
+        )
+        self.assertEqual(updated.display_name, "Kiểm Định Viên Trưởng Chuyền")
+        self.assertEqual(updated.email, "kiemdinh_truong@kiemdinh.gov.vn")
+        self.assertEqual(updated.phone, "0911999888")
+
+        # 2. Update with invalid email format raises 400
+        with self.assertRaises(HTTPException) as ctx:
+            update_account_profile_admin(
+                account_id=target_acc.id,
+                body=AccountProfileUpdateAdminRequest(email="invalid-email-string"),
+                admin=admin_acc,
+                db=self.db,
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+
+        # 3. Update with duplicate email of another account raises 400
+        admin_acc.email = "admin_check@example.com"
+        self.db.commit()
+        with self.assertRaises(HTTPException) as ctx_dup:
+            update_account_profile_admin(
+                account_id=target_acc.id,
+                body=AccountProfileUpdateAdminRequest(email="admin_check@example.com"),
+                admin=admin_acc,
+                db=self.db,
+            )
+        self.assertEqual(ctx_dup.exception.status_code, 400)
+        self.assertIn("đã được đăng ký", ctx_dup.exception.detail)
+
+
 
 
 if __name__ == "__main__":

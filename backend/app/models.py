@@ -57,6 +57,10 @@ class Account(Base):
     role: Mapped[Role] = mapped_column(SqlEnum(Role, native_enum=False), index=True)
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("owners.id"), nullable=True, unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     owner: Mapped["Owner | None"] = relationship(back_populates="account", foreign_keys=[owner_id])
 
 

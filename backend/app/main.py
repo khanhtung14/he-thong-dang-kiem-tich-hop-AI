@@ -9,9 +9,23 @@ from app import models  # noqa: F401 - register model metadata before create_all
 from app.routers import api, auth_router
 
 
+from sqlalchemy import text
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        for col, typ in [
+            ("display_name", "VARCHAR(255)"),
+            ("email", "VARCHAR(255)"),
+            ("phone", "VARCHAR(50)"),
+            ("avatar_url", "TEXT"),
+        ]:
+            try:
+                conn.execute(text(f"ALTER TABLE accounts ADD COLUMN {col} {typ}"))
+                conn.commit()
+            except Exception:
+                pass
     yield
 
 
@@ -20,7 +34,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 app.include_router(auth_router)

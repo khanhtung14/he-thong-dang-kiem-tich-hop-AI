@@ -1,8 +1,8 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react'
-import { api, ApiError, Appointment, ChatMessage, Inspection, InspectionResult, isTokenExpired, Owner, Role, Session, Vehicle, login as apiLogin, register as apiRegister } from './api'
+import { api, ApiError, Appointment, ChatMessage, Inspection, InspectionResult, isTokenExpired, Owner, Role, Session, UserProfile, Vehicle, AccountListItem, login as apiLogin, register as apiRegister, sendForgotPasswordOtp, verifyOtpOnly, verifyOtpAndResetPassword } from './api'
 import './support-chat.css'
 
-type Page = 'overview' | 'vehicles' | 'appointments' | 'inspections' | 'owners' | 'requirements-agent' | 'inspection-testing'
+type Page = 'overview' | 'vehicles' | 'appointments' | 'inspections' | 'owners' | 'roles' | 'inspection-testing' | 'profile'
 const roleName: Record<Role, string> = { admin: 'Quản trị viên', intake: 'Nhân viên tiếp nhận', inspector: 'Kiểm định viên', owner: 'Chủ xe' }
 const statusName: Record<string, string> = { active: 'Đang hiệu lực', cancelled: 'Đã hủy', completed: 'Hoàn tất', received: 'Mới tiếp nhận', needs_documents: 'Thiếu hồ sơ', in_progress: 'Đang kiểm định', passed: 'Đạt', failed: 'Không đạt' }
 const resultName: Record<string, string> = { dat: 'Đạt', mi: 'Mi', ma: 'Ma', dd: 'DD' }
@@ -15,8 +15,9 @@ const PAGE_PERMISSIONS: Record<Page, Role[]> = {
   'appointments': ['admin', 'intake', 'inspector', 'owner'],
   'inspections': ['admin', 'intake', 'inspector', 'owner'],
   'owners': ['admin', 'intake'],
-  'requirements-agent': ['admin'],
+  'roles': ['admin'],
   'inspection-testing': ['admin', 'inspector'],
+  'profile': ['admin', 'intake', 'inspector', 'owner'],
 }
 
 function isPageAllowedForRole(page: Page, role: Role): boolean {
@@ -27,18 +28,18 @@ function isPageAllowedForRole(page: Page, role: Role): boolean {
 function getPagesForRole(role: Role): { id: Page; label: string; icon: string }[] {
   if (role === 'admin') {
     return [
-      { id: 'overview', label: 'Điều hành tổng thể', icon: '📊' },
-      { id: 'inspections', label: 'Giám sát hồ sơ', icon: '📋' },
+      { id: 'overview', label: 'Điều hành tổng thể', icon: '◫' },
+      { id: 'inspections', label: 'Giám sát hồ sơ', icon: '▤' },
       { id: 'appointments', label: 'Lịch hẹn trung tâm', icon: '▦' },
       { id: 'vehicles', label: 'Quản lý phương tiện', icon: '▣' },
       { id: 'owners', label: 'Quản lý chủ xe', icon: '♙' },
-      { id: 'requirements-agent', label: 'Phân tích chiến lược AI', icon: '✦' },
+      { id: 'roles', label: 'Phân quyền hệ thống', icon: '🛡' },
     ]
   }
   if (role === 'intake') {
     return [
-      { id: 'overview', label: 'Bàn tiếp nhận', icon: '📥' },
-      { id: 'inspections', label: 'Hồ sơ tiếp nhận', icon: '◫' },
+      { id: 'overview', label: 'Bàn tiếp nhận', icon: '◫' },
+      { id: 'inspections', label: 'Hồ sơ tiếp nhận', icon: '▤' },
       { id: 'appointments', label: 'Điều phối lịch hẹn', icon: '▦' },
       { id: 'owners', label: 'Hồ sơ chủ xe', icon: '♙' },
       { id: 'vehicles', label: 'Phương tiện đăng ký', icon: '▣' },
@@ -46,17 +47,17 @@ function getPagesForRole(role: Role): { id: Page; label: string; icon: string }[
   }
   if (role === 'inspector') {
     return [
-      { id: 'overview', label: 'Dây chuyền kiểm định', icon: '⚙️' },
-      { id: 'inspections', label: 'Đo kiểm & Chốt kết quả', icon: '◫' },
+      { id: 'overview', label: 'Dây chuyền kiểm định', icon: '◫' },
+      { id: 'inspections', label: 'Đo kiểm & Chốt kết quả', icon: '▤' },
       { id: 'vehicles', label: 'Xe trên dây chuyền', icon: '▣' },
       { id: 'appointments', label: 'Lịch xe dự kiến', icon: '▦' },
     ]
   }
   return [
-    { id: 'overview', label: 'Cổng dịch vụ chủ xe', icon: '⌂' },
+    { id: 'overview', label: 'Cổng dịch vụ chủ xe', icon: '◫' },
     { id: 'vehicles', label: 'Xe của tôi', icon: '▣' },
     { id: 'appointments', label: 'Lịch hẹn của tôi', icon: '▦' },
-    { id: 'inspections', label: 'Tra cứu kiểm định', icon: '◫' },
+    { id: 'inspections', label: 'Tra cứu kiểm định', icon: '▤' },
   ]
 }
 
@@ -108,6 +109,35 @@ function App() {
     const timer = setTimeout(() => setError(''), 6000)
     return () => clearTimeout(timer)
   }, [error])
+
+  // Synchronize user profile to ensure fresh avatar and display name
+  useEffect(() => {
+    if (session?.token) {
+      api.getProfile(session.token).then(profile => {
+        setSession(prev => {
+          if (!prev) return prev
+          const cleanName = profile.display_name ? profile.display_name.replace(/\s*\(DỮ LIỆU MẪU\)/gi, '').trim() : null
+          if (
+            prev.display_name === cleanName &&
+            prev.email === profile.email &&
+            prev.phone === profile.phone &&
+            prev.avatar_url === profile.avatar_url
+          ) {
+            return prev
+          }
+          const updated: Session = {
+            ...prev,
+            display_name: cleanName,
+            email: profile.email,
+            phone: profile.phone,
+            avatar_url: profile.avatar_url,
+          }
+          sessionStorage.setItem('inspection-session', JSON.stringify(updated))
+          return updated
+        })
+      }).catch(() => {})
+    }
+  }, [session?.token])
 
   // State for Dedicated Inspection Testing Page (Replaces module/modal for Inspector)
   const [testingInspection, setTestingInspection] = useState<Inspection | null>(null)
@@ -209,6 +239,10 @@ function App() {
   const allowedPages = getPagesForRole(session.role)
   const current = page === 'inspection-testing' 
     ? `Đo kiểm kỹ thuật (${testingInspection?.code ?? ''})` 
+    : page === 'profile'
+    ? 'Chỉnh sửa thông tin cá nhân'
+    : page === 'roles'
+    ? 'Phân quyền hệ thống'
     : allowedPages.find(item => item.id === page)?.label ?? 'Tổng quan'
 
   function triggerIntakeForVehicle(vehicleId?: number) {
@@ -244,7 +278,7 @@ function App() {
               className={`nav-item ${page === item.id ? 'nav-active' : ''}`}
               onClick={() => { navigate(item.id); setMobileNav(false) }}
             >
-              <span className="nav-icon">{item.icon}</span>
+              {item.icon ? <span className="nav-icon">{item.icon}</span> : null}
               {item.label}
               {page === item.id && <span className="nav-current"/>}
             </button>
@@ -252,18 +286,33 @@ function App() {
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="help-card">
-            <div className="help-icon">?</div>
-            <strong>Vai trò: {roleName[session.role]}</strong>
-            <span>Đang đăng nhập với quyền {session.role}</span>
-          </div>
-          <div className="user-card">
-            <div className="avatar">{session.username.slice(0, 1).toUpperCase()}</div>
+          <div
+            className="user-card user-card-interactive"
+            onClick={() => { navigate('profile'); setMobileNav(false) }}
+            title="Bấm vào để chỉnh sửa thông tin cá nhân"
+            role="button"
+            tabIndex={0}
+          >
+            <div className="avatar" title="Ảnh đại diện - Bấm để chỉnh sửa">
+              {session.avatar_url ? (
+                <img src={session.avatar_url} alt="Avatar" className="avatar-img" />
+              ) : (
+                (session.display_name || session.username).replace(/\s*\(DỮ LIỆU MẪU\)/gi, '').slice(0, 1).toUpperCase()
+              )}
+            </div>
             <div className="user-meta">
-              <strong>{session.username}</strong>
+              <strong>{(session.display_name || session.username).replace(/\s*\(DỮ LIỆU MẪU\)/gi, '')}</strong>
               <span className={`role-badge-pill role-badge-${session.role}`}>{roleName[session.role]}</span>
             </div>
-            <button className="logout" title="Đăng xuất" onClick={signOut} aria-label="Đăng xuất">
+            <button
+              className="logout"
+              title="Đăng xuất"
+              onClick={(e) => {
+                e.stopPropagation()
+                signOut()
+              }}
+              aria-label="Đăng xuất"
+            >
               <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" />
               </svg>
@@ -324,11 +373,10 @@ function App() {
               )}
               {page === 'inspection-testing' && !testingInspection && (
                 <div className="card" style={{ padding: '36px', textAlign: 'center', maxWidth: '600px', margin: '40px auto' }}>
-                  <div style={{ fontSize: '32px', marginBottom: '12px' }}>📋</div>
                   <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: 800 }}>Chưa chọn hồ sơ kiểm định</h3>
                   <p style={{ color: '#64748b', fontSize: '14px', margin: '0 0 20px 0' }}>Vui lòng chọn một phương tiện từ danh sách hồ sơ để vào chuyền đo kiểm và ghi kết quả kỹ thuật.</p>
                   <button className="button button-primary" onClick={() => navigate('inspections')}>
-                    Đi đến Danh sách hồ sơ kiểm định →
+                    Đi đến Danh sách hồ sơ kiểm định
                   </button>
                 </div>
               )}
@@ -401,7 +449,25 @@ function App() {
                   }}
                 />
               )}
-              {page === 'requirements-agent' && <RequirementsAgentPage token={session.token} />}
+              {page === 'roles' && <SystemRolesPage session={session} />}
+              {page === 'profile' && (
+                <ProfilePage
+                  session={session}
+                  onProfileUpdated={(updatedProfile) => {
+                    const newSession: Session = {
+                      ...session,
+                      display_name: updatedProfile.display_name,
+                      email: updatedProfile.email,
+                      phone: updatedProfile.phone,
+                      avatar_url: updatedProfile.avatar_url,
+                    }
+                    setSession(newSession)
+                    sessionStorage.setItem('inspection-session', JSON.stringify(newSession))
+                    setNotice('Đã cập nhật thông tin cá nhân thành công!')
+                  }}
+                  onBack={() => navigate('overview')}
+                />
+              )}
             </>
           )}
         </div>
@@ -454,6 +520,7 @@ function App() {
       {openGlobalVehicleModal && (
         <VehicleModal
           owners={owners}
+          isOwner={session.role === 'owner'}
           onClose={() => setOpenGlobalVehicleModal(false)}
           onSubmit={async body => {
             await runAction(() => api.createVehicle(session.token, body), 'Đã thêm phương tiện mới.')
@@ -697,7 +764,7 @@ function InspectionTestingPage({
           <StatusBadge value={inspection.status} />
           {canInspect(role) && !isFinalized && results.length > 0 && (
             <button className="button button-primary" disabled={busy} onClick={handleFinalizeChecklist}>
-              {busy ? 'Đang chốt...' : '🔒 Chốt checklist hoàn tất'}
+              {busy ? 'Đang chốt...' : 'Chốt checklist hoàn tất'}
             </button>
           )}
           {inspection.status === 'passed' && (
@@ -708,7 +775,7 @@ function InspectionTestingPage({
               }
               setShowCertForm(v => !v)
             }}>
-              {showCertForm ? 'Đóng biểu mẫu GCN' : '📜 Phát hành Giấy chứng nhận & Tem'}
+              {showCertForm ? 'Đóng biểu mẫu GCN' : 'Phát hành Giấy chứng nhận & Tem'}
             </button>
           )}
         </div>
@@ -800,7 +867,7 @@ function InspectionTestingPage({
 
           {isFinalized ? (
             <div className="form-warning" style={{ margin: '14px 0', padding: '16px', borderRadius: 10, background: '#f8fafc', border: '1px solid #cbd5e1' }}>
-              🔒 <strong>Hồ sơ kiểm định đã hoàn tất chốt kết quả ({statusName[inspection.status]}).</strong>
+              <strong>Hồ sơ kiểm định đã hoàn tất chốt kết quả ({statusName[inspection.status]}).</strong>
               <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#64748b' }}>Không thể ghi nhận thêm hoặc sửa đổi kết quả đo kiểm sau khi đã chốt.</p>
             </div>
           ) : (
@@ -822,7 +889,7 @@ function InspectionTestingPage({
                     className={`result-choice-btn result-choice-dat ${itemResult === 'dat' ? 'active' : ''}`}
                     onClick={() => setItemResult('dat')}
                   >
-                    <span>✓ ĐẠT</span>
+                    <span>ĐẠT</span>
                     <small>Pass</small>
                   </button>
                   <button
@@ -877,7 +944,7 @@ function InspectionTestingPage({
                   className="button button-primary full-button"
                   disabled={busy || !itemCode.trim()}
                 >
-                  {busy ? 'Đang lưu kết quả...' : '💾 Lưu kết quả công đoạn này'}
+                  {busy ? 'Đang lưu kết quả...' : 'Lưu kết quả công đoạn này'}
                 </button>
               </div>
             </form>
@@ -886,7 +953,7 @@ function InspectionTestingPage({
           {/* Inline Certificate Form when Passed */}
           {showCertForm && inspection.status === 'passed' && (
             <div className="cert-inline-card">
-              <h3>📜 Biểu mẫu phát hành Giấy chứng nhận & Tem kiểm định</h3>
+              <h3>Biểu mẫu phát hành Giấy chứng nhận & Tem kiểm định</h3>
               <form onSubmit={handleIssueCertificate}>
                 <div className="form-grid">
                   <Field label="Số giấy chứng nhận (Sinh tự động)" required>
@@ -906,7 +973,7 @@ function InspectionTestingPage({
                         onClick={() => setCertNumber(generateCertCode())}
                         title="Tự động sinh lại số GCN"
                       >
-                        🎲
+                        Tạo số
                       </button>
                     </div>
                   </Field>
@@ -927,7 +994,7 @@ function InspectionTestingPage({
                         onClick={() => setStampNumber(generateStampCode())}
                         title="Tự động sinh lại số Tem"
                       >
-                        🎲
+                        Tạo số
                       </button>
                     </div>
                   </Field>
@@ -995,7 +1062,7 @@ function InspectionTestingPage({
           {/* Results Summary Strip */}
           <div className="testing-summary-strip">
             <span>Tổng: <b>{results.length}</b></span>
-            <span style={{ color: '#047857' }}>✓ {passCount} Đạt</span>
+            <span style={{ color: '#047857' }}>{passCount} Đạt</span>
             <span style={{ color: '#0369a1' }}>• {minorCount} Mi</span>
             <span style={{ color: '#b45309' }}>• {majorCount} Ma</span>
             <span style={{ color: '#be123c' }}>• {dangerousCount} DD</span>
@@ -1012,7 +1079,6 @@ function InspectionTestingPage({
             </div>
           ) : results.length > 0 ? (
             <div className="alert alert-success" style={{ marginBottom: 16 }}>
-              <span>✓</span>
               <div>
                 <strong>Tất cả hạng mục đều Đạt hoặc Mi</strong>
                 <p style={{ margin: '2px 0 0', fontSize: 12 }}>Phương tiện đủ điều kiện được kết luận <b>ĐẠT</b> khi hoàn thành checklist.</p>
@@ -1053,7 +1119,7 @@ function InspectionTestingPage({
                 disabled={busy}
                 onClick={handleFinalizeChecklist}
               >
-                {busy ? 'Đang tổng hợp...' : '🔒 Chốt checklist hoàn tất kiểm định'}
+                {busy ? 'Đang tổng hợp...' : 'Chốt checklist hoàn tất kiểm định'}
               </button>
             </div>
           )}
@@ -1062,7 +1128,7 @@ function InspectionTestingPage({
           {isFinalized && (
             <div style={{ marginTop: 20, padding: 18, borderRadius: 12, background: inspection.status === 'passed' ? '#ecfdf5' : '#fff1f2', border: `1px solid ${inspection.status === 'passed' ? '#a7f3d0' : '#fecdd3'}` }}>
               <strong style={{ color: inspection.status === 'passed' ? '#065f46' : '#9f1239', fontSize: 15, display: 'block', marginBottom: 4 }}>
-                {inspection.status === 'passed' ? '🎉 Kết luận: PHƯƠNG TIỆN ĐẠT TIÊU CHUẨN' : '⚠️ Kết luận: PHƯƠNG TIỆN KHÔNG ĐẠT TIÊU CHUẨN'}
+                {inspection.status === 'passed' ? 'Kết luận: PHƯƠNG TIỆN ĐẠT TIÊU CHUẨN' : 'Kết luận: PHƯƠNG TIỆN KHÔNG ĐẠT TIÊU CHUẨN'}
               </strong>
               <span style={{ fontSize: 13, color: inspection.status === 'passed' ? '#047857' : '#be123c' }}>
                 {inspection.status === 'passed' ? 'Phương tiện đủ điều kiện cấp Giấy chứng nhận và Tem kiểm định an toàn kỹ thuật.' : 'Phương tiện có khiếm khuyết kỹ thuật cần khắc phục trước khi kiểm định lại.'}
@@ -1079,9 +1145,9 @@ function InspectionTestingPage({
    ROLE WORKSPACE 1: QUẢN TRỊ VIÊN (ADMIN DASHBOARD)
    ========================================================================== */
 function AdminOverview({
-  session, owners, vehicles, appointments, inspections, navigate, onOpenDetail
+  vehicles, appointments, inspections, navigate, onOpenDetail
 }: {
-  session: Session; owners: Owner[]; vehicles: Vehicle[]; appointments: Appointment[]; inspections: Inspection[];
+  session?: Session; owners?: Owner[]; vehicles: Vehicle[]; appointments: Appointment[]; inspections: Inspection[];
   navigate: (p: Page) => void; onOpenDetail: (i: Inspection) => void;
 }) {
   const today = new Date().toISOString().slice(0, 10)
@@ -1097,51 +1163,66 @@ function AdminOverview({
     <>
       <div className="role-workspace-banner">
         <div>
-          <div className="role-badge-pill role-badge-admin">👑 Quản trị viên: {session.username} · Giám sát toàn diện</div>
           <h1>Trung Tâm Điều Hành & Giám Sát</h1>
-          <p>Giám sát toàn bộ {owners.length} chủ xe, {vehicles.length} phương tiện, lưu lượng kiểm định và chỉ số an toàn của trung tâm.</p>
-        </div>
-        <div className="role-header-actions">
-          <button className="button button-primary" onClick={() => navigate('requirements-agent')}>✦ AI Phân tích chiến lược</button>
-          <button className="button button-outline" onClick={() => navigate('inspections')}>📋 Giám sát hồ sơ</button>
         </div>
       </div>
 
       <section className="stat-grid">
-        <StatCard label="Tỷ lệ Đạt chuẩn (Pass Rate)" value={passRate} hint={`${passed} đạt / ${totalDecided} đã chốt`} icon="📈" tone="green" isPercent />
-        <StatCard label="Tổng phương tiện quản lý" value={vehicles.length} hint="Dữ liệu xe trong hệ thống" icon="▣" tone="blue" />
-        <StatCard label="Hồ sơ đang xử lý" value={activeInProcess} hint="Trên chuyền & tại quầy" icon="◫" tone="orange" />
-        <StatCard label="Lịch hẹn hôm nay" value={todayAppointments.length} hint="Khách hẹn đang hiệu lực" icon="▦" tone="purple" />
+        <StatCard label="Tỷ lệ Đạt chuẩn (Pass Rate)" value={passRate} hint={`${passed} đạt / ${totalDecided} đã chốt`} tone="green" isPercent />
+        <StatCard label="Tổng phương tiện quản lý" value={vehicles.length} hint="Dữ liệu xe trong hệ thống" tone="blue" />
+        <StatCard label="Hồ sơ đang xử lý" value={activeInProcess} hint="Trên chuyền & tại quầy" tone="orange" />
+        <StatCard label="Lịch hẹn hôm nay" value={todayAppointments.length} hint="Khách hẹn đang hiệu lực" tone="purple" />
       </section>
 
       {/* Process Flow Pipeline */}
-      <section className="panel" style={{ marginBottom: 24, padding: '20px 24px' }}>
-        <div className="panel-heading" style={{ marginBottom: 16 }}>
-          <div>
-            <h3 style={{ fontSize: 16, fontWeight: 700 }}>Tiến trình luân chuyển hồ sơ toàn trung tâm</h3>
-            <p style={{ fontSize: 13, color: '#64748b' }}>Phân bổ số lượng hồ sơ theo từng giai đoạn xử lý</p>
-          </div>
+      <section className="panel" style={{ marginBottom: 16, padding: '12px 18px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <strong style={{ fontSize: '13.5px', color: '#1e293b', fontWeight: 700 }}>
+            Tiến trình luân chuyển hồ sơ toàn trung tâm
+          </strong>
+          <span style={{ fontSize: '12px', color: '#64748b' }}>
+            Phân bổ số lượng theo giai đoạn xử lý
+          </span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, textAlign: 'center' }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#0f766e', textTransform: 'uppercase' }}>1. Tiếp nhận hồ sơ</span>
-            <div style={{ fontSize: 26, fontWeight: 800, color: '#0f172a', margin: '6px 0' }}>{inspections.filter(i => i.status === 'received').length}</div>
-            <span style={{ fontSize: 11.5, color: '#64748b' }}>Chờ chuyển dây chuyền</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#0f766e', textTransform: 'uppercase' }}>1. Tiếp nhận hồ sơ</div>
+              <div style={{ fontSize: 11, color: '#64748b' }}>Chờ chuyển dây chuyền</div>
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', marginLeft: 10 }}>
+              {inspections.filter(i => i.status === 'received').length}
+            </div>
           </div>
-          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 16, textAlign: 'center' }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#b45309', textTransform: 'uppercase' }}>2. Đang kiểm định</span>
-            <div style={{ fontSize: 26, fontWeight: 800, color: '#b45309', margin: '6px 0' }}>{inspections.filter(i => i.status === 'in_progress').length}</div>
-            <span style={{ fontSize: 11.5, color: '#78350f' }}>Đang đo 5 công đoạn</span>
+
+          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', textTransform: 'uppercase' }}>2. Đang kiểm định</div>
+              <div style={{ fontSize: 11, color: '#78350f' }}>Đang đo 5 công đoạn</div>
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#b45309', marginLeft: 10 }}>
+              {inspections.filter(i => i.status === 'in_progress').length}
+            </div>
           </div>
-          <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 12, padding: 16, textAlign: 'center' }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>3. Đạt tiêu chuẩn</span>
-            <div style={{ fontSize: 26, fontWeight: 800, color: '#047857', margin: '6px 0' }}>{passed}</div>
-            <span style={{ fontSize: 11.5, color: '#065f46' }}>Đã cấp/chờ cấp GCN</span>
+
+          <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>3. Đạt tiêu chuẩn</div>
+              <div style={{ fontSize: 11, color: '#065f46' }}>Đã cấp/chờ cấp GCN</div>
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#047857', marginLeft: 10 }}>
+              {passed}
+            </div>
           </div>
-          <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 12, padding: 16, textAlign: 'center' }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#be123c', textTransform: 'uppercase' }}>4. Không đạt (Lỗi Ma/DD)</span>
-            <div style={{ fontSize: 26, fontWeight: 800, color: '#be123c', margin: '6px 0' }}>{failed}</div>
-            <span style={{ fontSize: 11.5, color: '#9f1239' }}>Cần khắc phục kỹ thuật</span>
+
+          <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#be123c', textTransform: 'uppercase' }}>4. Không đạt (Lỗi Ma/DD)</div>
+              <div style={{ fontSize: 11, color: '#9f1239' }}>Cần khắc phục kỹ thuật</div>
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#be123c', marginLeft: 10 }}>
+              {failed}
+            </div>
           </div>
         </div>
       </section>
@@ -1222,13 +1303,13 @@ function IntakeOverview({
     <>
       <div className="role-workspace-banner">
         <div>
-          <div className="role-badge-pill role-badge-intake">📥 Nhân viên tiếp nhận: {session.username} · Bàn đón tiếp</div>
+          <div className="role-badge-pill role-badge-intake">Nhân viên tiếp nhận: {session.username} · Bàn đón tiếp</div>
           <h1>Bàn Tiếp Nhận & Điều Phối Hồ Sơ</h1>
           <p>Tiếp đón chủ phương tiện, đối chiếu hồ sơ giấy tờ, sắp xếp lịch hẹn và mở hồ sơ kiểm định.</p>
         </div>
         <div style={{ textAlign: 'right' }}>
           <span className={`shift-pill ${isMorning ? 'shift-morning' : 'shift-afternoon'}`}>
-            {isMorning ? '☀️ Ca làm việc Sáng: 06:30 – 11:00' : '⛅ Ca làm việc Chiều: 13:00 – 17:30'}
+            {isMorning ? 'Ca làm việc Sáng: 06:30 – 11:00' : 'Ca làm việc Chiều: 13:00 – 17:30'}
           </span>
           <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
             Hôm nay: {formatDate(today)}
@@ -1253,10 +1334,10 @@ function IntakeOverview({
       </div>
 
       <section className="stat-grid">
-        <StatCard label="Khách hẹn hôm nay" value={activeTodayApt.length} hint="Cần đón tiếp trong ca" icon="📅" tone="blue" />
-        <StatCard label="Hồ sơ mới tiếp nhận" value={receivedCount} hint="Đang chờ vào chuyền" icon="📥" tone="green" />
-        <StatCard label="Hồ sơ thiếu chứng từ" value={needsDocsCount} hint="Chờ bổ sung giấy tờ" icon="⚠️" tone="orange" />
-        <StatCard label="Tổng chủ xe quản lý" value={owners.length} hint="Hồ sơ khách hàng" icon="👥" tone="purple" />
+        <StatCard label="Khách hẹn hôm nay" value={activeTodayApt.length} hint="Cần đón tiếp trong ca" tone="blue" />
+        <StatCard label="Hồ sơ mới tiếp nhận" value={receivedCount} hint="Đang chờ vào chuyền" tone="green" />
+        <StatCard label="Hồ sơ thiếu chứng từ" value={needsDocsCount} hint="Chờ bổ sung giấy tờ" tone="orange" />
+        <StatCard label="Tổng chủ xe quản lý" value={owners.length} hint="Hồ sơ khách hàng" tone="purple" />
       </section>
 
       {/* Today's Appointments Desk */}
@@ -1375,22 +1456,22 @@ function InspectorOverview({
     <>
       <div className="role-workspace-banner">
         <div>
-          <div className="role-badge-pill role-badge-inspector">⚙️ Kiểm định viên: {session.username} · Buồng điều khiển</div>
+          <div className="role-badge-pill role-badge-inspector">Kiểm định viên: {session.username} · Buồng điều khiển</div>
           <h1>Dây Chuyền Đo Kiểm Kỹ Thuật</h1>
           <p>Kiểm tra 5 công đoạn quy chuẩn, ghi nhận thông số ({todayAptCount} xe có hẹn hôm nay), đánh giá khiếm khuyết và chốt kết quả.</p>
         </div>
         <div>
           <span className="live-state" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}>
-            <i style={{ background: '#d97706' }} /> Dây chuyền trực tuyến
+            Dây chuyền trực tuyến
           </span>
         </div>
       </div>
 
       <section className="stat-grid">
-        <StatCard label="Xe đang trên dây chuyền" value={inProgress.length} hint="Đang tiến hành đo kiểm" icon="⚙️" tone="orange" />
-        <StatCard label="Chờ vào kiểm tra" value={waitingTest.length} hint="Hồ sơ mới chuyển sang" icon="⏳" tone="blue" />
-        <StatCard label="Phương tiện ĐẠT" value={passedCount} hint="Đủ điều kiện cấp GCN" icon="✓" tone="green" />
-        <StatCard label="Có khiếm khuyết (Ma/DD)" value={failedCount} hint="Không đạt tiêu chuẩn" icon="!" tone="red" />
+        <StatCard label="Xe đang trên dây chuyền" value={inProgress.length} hint="Đang tiến hành đo kiểm" tone="orange" />
+        <StatCard label="Chờ vào kiểm tra" value={waitingTest.length} hint="Hồ sơ mới chuyển sang" tone="blue" />
+        <StatCard label="Phương tiện ĐẠT" value={passedCount} hint="Đủ điều kiện cấp GCN" tone="green" />
+        <StatCard label="Có khiếm khuyết (Ma/DD)" value={failedCount} hint="Không đạt tiêu chuẩn" tone="red" />
       </section>
 
       {/* 5-Stage Station Map */}
@@ -1551,20 +1632,20 @@ function OwnerOverview({
     <>
       <div className="role-workspace-banner">
         <div>
-          <div className="role-badge-pill role-badge-owner">🚗 Chủ phương tiện: {session.username} · Cổng dịch vụ</div>
+          <div className="role-badge-pill role-badge-owner">Chủ phương tiện: {session.username} · Cổng dịch vụ</div>
           <h1>Cổng Dịch Vụ Chủ Xe & Doanh Nghiệp</h1>
           <p>Quản lý phương tiện sở hữu, theo dõi tiến độ hồ sơ và đặt lịch kiểm định thuận tiện.</p>
         </div>
-        <div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button className="button button-primary" onClick={onOpenAppointmentModal}>＋ Đặt lịch đăng kiểm mới</button>
         </div>
       </div>
 
       <section className="stat-grid">
-        <StatCard label="Phương tiện của tôi" value={vehicles.length} hint="Xe đã đăng ký" icon="▣" tone="blue" />
-        <StatCard label="Lịch hẹn đang hiệu lực" value={activeAppointments.length} hint="Lịch đăng kiểm sắp tới" icon="▦" tone="orange" />
-        <StatCard label="Hồ sơ đã kiểm định" value={inspections.length} hint="Lịch sử đăng kiểm" icon="📋" tone="green" />
-        <StatCard label="Hồ sơ Đạt tiêu chuẩn" value={inspections.filter(i => i.status === 'passed').length} hint="Đã được cấp chứng nhận" icon="✓" tone="purple" />
+        <StatCard label="Phương tiện của tôi" value={vehicles.length} hint="Xe đã đăng ký" tone="blue" />
+        <StatCard label="Lịch hẹn đang hiệu lực" value={activeAppointments.length} hint="Lịch đăng kiểm sắp tới" tone="orange" />
+        <StatCard label="Hồ sơ đã kiểm định" value={inspections.length} hint="Lịch sử đăng kiểm" tone="green" />
+        <StatCard label="Hồ sơ Đạt tiêu chuẩn" value={inspections.filter(i => i.status === 'passed').length} hint="Đã được cấp chứng nhận" tone="purple" />
       </section>
 
       {/* My Vehicles */}
@@ -1574,7 +1655,9 @@ function OwnerOverview({
             <h3>Danh sách phương tiện của tôi</h3>
             <p>Các phương tiện thuộc quyền quản lý của tài khoản</p>
           </div>
-          <button className="text-button" onClick={() => navigate('vehicles')}>Xem chi tiết xe <span>→</span></button>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button className="text-button" onClick={() => navigate('vehicles')}>Xem chi tiết xe <span>→</span></button>
+          </div>
         </div>
         {vehicles.length ? (
           <div className="table-wrap">
@@ -1654,10 +1737,9 @@ function OwnerOverview({
   )
 }
 
-function StatCard({ label, value, hint, icon, tone, isPercent }: { label: string; value: number; hint: string; icon: string; tone: string; isPercent?: boolean }) {
+function StatCard({ label, value, hint, tone, isPercent }: { label: string; value: number; hint: string; tone: string; isPercent?: boolean }) {
   return (
     <div className="stat-card">
-      <div className={`stat-icon ${tone}`}>{icon}</div>
       <div className="stat-label">{label}</div>
       <div className="stat-value">{value.toLocaleString('vi-VN')}{isPercent ? '%' : ''}</div>
       <div className="stat-hint">{hint}</div>
@@ -1667,18 +1749,109 @@ function StatCard({ label, value, hint, icon, tone, isPercent }: { label: string
 }
 
 /* ==========================================================================
-   LOGIN SCREEN WITH QUICK DEMO ACCESS
+   LOGIN SCREEN WITH QUICK DEMO ACCESS & DEDICATED FORGOT PASSWORD VIEW
    ========================================================================== */
 function Login({ onLogin }: { onLogin: (session: Session) => void }) {
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   // Registration fields (defaults to Owner role)
   const [displayName, setDisplayName] = useState('')
+  const [regEmail, setRegEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [identity, setIdentity] = useState('')
   const [address, setAddress] = useState('')
+
+  // Forgot password fields
+  const [forgotStep, setForgotStep] = useState<'email' | 'otp' | 'success'>('email')
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotAccountUsername, setForgotAccountUsername] = useState('')
+  const [forgotOtp, setForgotOtp] = useState('')
+  const [otpVerified, setOtpVerified] = useState(false)
+  const [forgotNewPassword, setForgotNewPassword] = useState('')
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('')
+  const [forgotShowPassword, setForgotShowPassword] = useState(false)
+  const [forgotBusy, setForgotBusy] = useState(false)
+
+  async function handleSendOtp(e?: FormEvent) {
+    if (e) e.preventDefault()
+    const clean = forgotEmail.trim().toLowerCase()
+    if (!clean || !clean.includes('@')) {
+      setError('Vui lòng nhập định dạng email hợp lệ (Ví dụ: user@kiemdinh.vn).')
+      return
+    }
+    setForgotBusy(true)
+    setError('')
+    try {
+      const res = await sendForgotPasswordOtp(clean)
+      setForgotAccountUsername(res.username || '')
+      setOtpVerified(false)
+      setForgotOtp('')
+      setForgotNewPassword('')
+      setForgotConfirmPassword('')
+      setForgotStep('otp')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể gửi mã xác nhận.')
+    } finally {
+      setForgotBusy(false)
+    }
+  }
+
+  async function handleCheckOtp(e?: FormEvent) {
+    if (e) e.preventDefault()
+    setError('')
+    const cleanOtp = forgotOtp.trim()
+    if (cleanOtp.length < 6) {
+      setError('Vui lòng nhập đủ mã xác nhận gồm 6 chữ số.')
+      return
+    }
+    setForgotBusy(true)
+    try {
+      await verifyOtpOnly({
+        email: forgotEmail.trim().toLowerCase(),
+        otp_code: cleanOtp,
+      })
+      setOtpVerified(true)
+      setError('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Mã xác nhận không đúng hoặc đã hết hạn.')
+    } finally {
+      setForgotBusy(false)
+    }
+  }
+
+  async function handleVerifyAndReset(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    if (!forgotOtp.trim()) {
+      setError('Vui lòng nhập mã xác nhận gồm 6 chữ số.')
+      return
+    }
+    if (forgotNewPassword.length < 6) {
+      setError('Mật khẩu mới phải có ít nhất 6 ký tự.')
+      return
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setError('Mật khẩu xác nhận không trùng khớp.')
+      return
+    }
+
+    setForgotBusy(true)
+    try {
+      await verifyOtpAndResetPassword({
+        email: forgotEmail.trim().toLowerCase(),
+        otp_code: forgotOtp.trim(),
+        new_password: forgotNewPassword,
+      })
+      setForgotStep('success')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Xác thực mã hoặc đổi mật khẩu thất bại.')
+    } finally {
+      setForgotBusy(false)
+    }
+  }
 
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -1691,7 +1864,17 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
     try {
       onLogin(await apiLogin(u, p))
     } catch (reason) {
-      setError(reason instanceof ApiError && reason.status === 401 ? 'Tên đăng nhập hoặc mật khẩu không đúng.' : reason instanceof Error ? reason.message : 'Không thể đăng nhập')
+      if (reason instanceof ApiError) {
+        if (reason.status === 403 || reason.message.includes('khóa')) {
+          setError(reason.message || 'Tài khoản của bạn đang bị khóa.')
+          return
+        }
+        if (reason.status === 401) {
+          setError('Tên đăng nhập hoặc mật khẩu không đúng.')
+          return
+        }
+      }
+      setError(reason instanceof Error ? reason.message : 'Không thể đăng nhập')
     } finally {
       setBusy(false)
     }
@@ -1700,16 +1883,6 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
   async function submitRegister(event: FormEvent) {
     event.preventDefault()
     setBusy(true); setError('')
-    if (username.trim().length < 3) {
-      setError('Tên đăng nhập phải có ít nhất 3 ký tự.')
-      setBusy(false)
-      return
-    }
-    if (password.length < 6) {
-      setError('Mật khẩu phải có ít nhất 6 ký tự.')
-      setBusy(false)
-      return
-    }
     if (!displayName.trim()) {
       setError('Vui lòng nhập họ và tên chủ xe.')
       setBusy(false)
@@ -1720,11 +1893,32 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
       setBusy(false)
       return
     }
+    if (!regEmail.trim()) {
+      setError('Vui lòng nhập địa chỉ email.')
+      setBusy(false)
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regEmail.trim())) {
+      setError('Định dạng email không hợp lệ (Ví dụ: chuxe@gmail.com).')
+      setBusy(false)
+      return
+    }
+    if (username.trim().length < 3) {
+      setError('Tên đăng nhập phải có ít nhất 3 ký tự.')
+      setBusy(false)
+      return
+    }
+    if (password.length < 6) {
+      setError('Mật khẩu phải có ít nhất 6 ký tự.')
+      setBusy(false)
+      return
+    }
     try {
       const session = await apiRegister({
         username: username.trim(),
         password,
         display_name: displayName.trim(),
+        email: regEmail.trim().toLowerCase(),
         phone: phone.trim(),
         identity_or_tax_number: identity.trim() || undefined,
         address: address.trim() || undefined,
@@ -1740,8 +1934,9 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
   function quickLogin(user: string) {
     setAuthMode('login')
     setUsername(user)
-    setPassword('DemoOnly123!')
-    void submitLogin(undefined, user, 'DemoOnly123!')
+    setPassword('123')
+    setShowPassword(false)
+    setError('')
   }
 
   return (
@@ -1775,29 +1970,287 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
           <div className="brand-mark">ĐK</div>
           <b>Đăng kiểm</b>
         </div>
-        <div className="login-form-wrap" style={authMode === 'register' ? { width: 'min(440px, 100%)' } : undefined}>
-          
-          {/* Mode Switcher Tabs */}
-          <div className="auth-mode-tabs">
-            <button
-              type="button"
-              className={`auth-mode-tab ${authMode === 'login' ? 'active' : ''}`}
-              onClick={() => { setAuthMode('login'); setError('') }}
-            >
-              <span>🔐</span> Đăng nhập
-            </button>
-            <button
-              type="button"
-              className={`auth-mode-tab ${authMode === 'register' ? 'active' : ''}`}
-              onClick={() => { setAuthMode('register'); setError('') }}
-            >
-              <span>📝</span> Đăng ký Chủ xe
-            </button>
-          </div>
+        {authMode === 'forgot' ? (
+          <div className="login-form-wrap" style={{ width: 'min(460px, 100%)' }}>
+            <div style={{ marginBottom: '18px' }}>
+              <button
+                type="button"
+                style={{
+                  background: '#f8fafc',
+                  border: '1.5px solid #2563eb',
+                  color: '#2563eb',
+                  cursor: 'pointer',
+                  padding: '8px 18px',
+                  borderRadius: '8px',
+                  fontSize: '13.5px',
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  boxShadow: '0 2px 6px rgba(37, 99, 235, 0.12)',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = '#2563eb'
+                  e.currentTarget.style.color = '#ffffff'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = '#f8fafc'
+                  e.currentTarget.style.color = '#2563eb'
+                }}
+                onClick={() => { setAuthMode('login'); setOtpVerified(false); setError('') }}
+              >
+                Quay lại Đăng nhập
+              </button>
+            </div>
+            <h2>Khôi phục mật khẩu</h2>
+              {forgotStep !== 'email' && (
+                <p className="login-subtitle">
+                  {forgotStep === 'otp'
+                    ? (otpVerified
+                        ? `Mã xác nhận hợp lệ! Vui lòng nhập mật khẩu mới cho tài khoản ${forgotEmail}.`
+                        : `Đã gửi mã xác nhận đến ${forgotEmail}. Vui lòng nhập mã và bấm Kiểm tra mã xác nhận.`)
+                    : 'Mật khẩu đã được cập nhật thành công!'}
+                </p>
+              )}
 
-          {authMode === 'login' ? (
+              {forgotStep === 'email' && (
+                <form onSubmit={e => void handleSendOtp(e)}>
+                  <label>
+                    Email đăng ký tài khoản *
+                    <div className="input-wrap">
+                      <input
+                        type="email"
+                        value={forgotEmail}
+                        onChange={e => setForgotEmail(e.target.value)}
+                        placeholder="VD: admin@kiemdinh.gov.vn hoặc chuxe@gmail.com"
+                        required
+                        autoFocus
+                      />
+                    </div>
+                  </label>
+
+                  {error && <div className="form-error">{error}</div>}
+
+                  <button className="button button-primary login-submit" disabled={forgotBusy} type="submit">
+                    {forgotBusy ? 'Đang gửi mã...' : 'Gửi mã xác nhận →'}
+                  </button>
+
+                  <div className="switch-auth-link">
+                    Đã nhớ mật khẩu?{' '}
+                    <button type="button" onClick={() => { setAuthMode('login'); setOtpVerified(false); setError('') }}>
+                      Đăng nhập tại đây
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {forgotStep === 'otp' && !otpVerified && (
+                <form onSubmit={e => void handleCheckOtp(e)}>
+                  <div style={{ marginBottom: '14px', fontSize: '13px', background: '#eff6ff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #bfdbfe', color: '#1e40af' }}>
+                    {forgotAccountUsername ? (
+                      <div style={{ fontWeight: 600 }}>Tài khoản xác nhận: <span style={{ color: '#1d4ed8' }}>@{forgotAccountUsername}</span></div>
+                    ) : null}
+                    <div style={{ fontSize: '12.5px', color: '#3b82f6', marginTop: forgotAccountUsername ? '3px' : '0' }}>
+                      Email nhận mã: <strong>{forgotEmail}</strong>
+                    </div>
+                  </div>
+
+                  <label>
+                    Mã xác nhận (6 chữ số) *
+                    <div className="input-wrap" style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={forgotOtp}
+                        onChange={e => setForgotOtp(e.target.value.replace(/\D/g, ''))}
+                        placeholder="VD: 123456"
+                        style={{
+                          fontSize: '18px',
+                          letterSpacing: '5px',
+                          paddingLeft: '16px',
+                          paddingRight: '118px',
+                          fontWeight: 'bold',
+                        }}
+                        required
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleSendOtp()}
+                        disabled={forgotBusy}
+                        style={{
+                          position: 'absolute',
+                          right: '7px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          color: '#2563eb',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          padding: '6px 10px',
+                          cursor: forgotBusy ? 'not-allowed' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          whiteSpace: 'nowrap',
+                          transition: 'all 0.15s ease'
+                        }}
+                        onMouseEnter={e => {
+                          if (!forgotBusy) {
+                            e.currentTarget.style.background = '#eff6ff'
+                            e.currentTarget.style.borderColor = '#93c5fd'
+                          }
+                        }}
+                        onMouseLeave={e => {
+                          if (!forgotBusy) {
+                            e.currentTarget.style.background = '#f1f5f9'
+                            e.currentTarget.style.borderColor = '#cbd5e1'
+                          }
+                        }}
+                        title="Gửi lại mã xác nhận mới đến email"
+                      >
+                        ↻ Gửi lại mã
+                      </button>
+                    </div>
+                  </label>
+
+                  <div style={{ margin: '8px 0 14px', fontSize: '13px', color: '#0369a1', background: '#e0f2fe', padding: '10px 14px', borderRadius: '8px', lineHeight: 1.5 }}>
+                    📬 Mã xác nhận 6 chữ số đã được gửi đến email. Vui lòng kiểm tra hộp thư đến (hoặc mục Thư rác/Spam) và nhập mã vào ô trên để kiểm tra.
+                  </div>
+
+                  {error && <div className="form-error">{error}</div>}
+
+                  <button className="button button-primary login-submit" disabled={forgotBusy || forgotOtp.trim().length < 6} type="submit">
+                    {forgotBusy ? 'Đang kiểm tra mã...' : 'Kiểm tra mã xác nhận →'}
+                  </button>
+                </form>
+              )}
+
+              {forgotStep === 'otp' && otpVerified && (
+                <form onSubmit={e => void handleVerifyAndReset(e)}>
+                  <div style={{ marginBottom: '14px', fontSize: '13px', background: '#ecfdf5', padding: '10px 14px', borderRadius: '8px', border: '1px solid #a7f3d0', color: '#065f46', lineHeight: 1.5 }}>
+                    <div style={{ fontWeight: 700, fontSize: '13.5px' }}>✓ Mã xác nhận chính xác ({forgotOtp})</div>
+                    <div style={{ fontSize: '12.5px', color: '#047857', marginTop: '3px' }}>
+                      {forgotAccountUsername ? (
+                        <>Đang đổi mật khẩu cho tài khoản: <strong>@{forgotAccountUsername}</strong></>
+                      ) : (
+                        <>Đang đổi mật khẩu cho email: <strong>{forgotEmail}</strong></>
+                      )}
+                    </div>
+                  </div>
+
+                  <label>
+                    Mật khẩu mới *
+                    <div className="input-wrap">
+                      <input
+                        type={forgotShowPassword ? 'text' : 'password'}
+                        value={forgotNewPassword}
+                        onChange={e => setForgotNewPassword(e.target.value)}
+                        placeholder="Tối thiểu 6 ký tự"
+                        required
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle-btn"
+                        onClick={() => setForgotShowPassword(v => !v)}
+                        title={forgotShowPassword ? "Ẩn mật khẩu" : "Xem mật khẩu"}
+                        aria-label={forgotShowPassword ? "Ẩn mật khẩu" : "Xem mật khẩu"}
+                        tabIndex={-1}
+                      >
+                        {forgotShowPassword ? (
+                          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                            <line x1="1" y1="1" x2="23" y2="23" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </label>
+
+                  <label>
+                    Nhập lại mật khẩu mới *
+                    <div className="input-wrap">
+                      <input
+                        type={forgotShowPassword ? 'text' : 'password'}
+                        value={forgotConfirmPassword}
+                        onChange={e => setForgotConfirmPassword(e.target.value)}
+                        placeholder="Xác nhận mật khẩu mới"
+                        required
+                      />
+                    </div>
+                  </label>
+
+                  {error && <div className="form-error">{error}</div>}
+
+                  <button className="button button-primary login-submit" disabled={forgotBusy} type="submit">
+                    {forgotBusy ? 'Đang đổi mật khẩu...' : 'Xác nhận đổi mật khẩu'}
+                  </button>
+                </form>
+              )}
+
+              {forgotStep === 'success' && (
+                <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                  <div style={{ width: '60px', height: '60px', background: '#dcfce7', color: '#16a34a', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '28px' }}>
+                    ✓
+                  </div>
+                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>Đổi mật khẩu thành công!</h3>
+                  <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '24px' }}>
+                    Tài khoản của bạn đã được cập nhật mật khẩu mới. Vui lòng đăng nhập để tiếp tục làm việc.
+                  </p>
+                  <button
+                    type="button"
+                    className="button button-primary login-submit"
+                    onClick={() => {
+                      if (forgotAccountUsername) {
+                        setUsername(forgotAccountUsername)
+                      }
+                      setPassword(forgotNewPassword)
+                      setShowPassword(true)
+                      setAuthMode('login')
+                      setForgotStep('email')
+                      setOtpVerified(false)
+                      setForgotOtp('')
+                      setForgotNewPassword('')
+                      setForgotConfirmPassword('')
+                      setError('')
+                    }}
+                  >
+                    Đăng nhập ngay với mật khẩu mới →
+                  </button>
+                </div>
+              )}
+          </div>
+        ) : (
+          <div className="login-form-wrap" style={authMode === 'register' ? { width: 'min(460px, 100%)' } : undefined}>
+            {/* Mode Switcher Tabs - Chỉ hiển thị Đăng nhập và Đăng ký */}
+            <div className="auth-mode-tabs">
+              <button
+                type="button"
+                className={`auth-mode-tab ${authMode === 'login' ? 'active' : ''}`}
+                onClick={() => { setAuthMode('login'); setError('') }}
+              >
+                Đăng nhập
+              </button>
+              <button
+                type="button"
+                className={`auth-mode-tab ${authMode === 'register' ? 'active' : ''}`}
+                onClick={() => { setAuthMode('register'); setError('') }}
+              >
+                Đăng ký Chủ xe
+              </button>
+            </div>
+
+            {authMode === 'login' ? (
             <>
-              <div className="eyebrow"><i/> CỔNG HỆ THỐNG</div>
+              <div className="eyebrow">CỔNG HỆ THỐNG</div>
               <h2>Chào mừng trở lại</h2>
               <p className="login-subtitle">Đăng nhập để vào không gian làm việc chuyên biệt theo vai trò.</p>
               
@@ -1805,21 +2258,54 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
                 <label>
                   Tên đăng nhập
                   <div className="input-wrap">
-                    <span className="input-icon">♙</span>
                     <input autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} placeholder="Nhập tên đăng nhập" required/>
                   </div>
                 </label>
                 <label>
-                  Mật khẩu
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                    <span>Mật khẩu</span>
+                    <button
+                      type="button"
+                      className="forgot-password-link"
+                      onClick={() => { setAuthMode('forgot'); setError('') }}
+                    >
+                      Quên mật khẩu?
+                    </button>
+                  </div>
                   <div className="input-wrap">
-                    <span className="input-icon">⌑</span>
-                    <input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Nhập mật khẩu" required/>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      placeholder="Nhập mật khẩu"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowPassword(v => !v)}
+                      title={showPassword ? "Ẩn mật khẩu" : "Xem mật khẩu"}
+                      aria-label={showPassword ? "Ẩn mật khẩu" : "Xem mật khẩu"}
+                      tabIndex={-1}
+                    >
+                      {showPassword ? (
+                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                          <line x1="1" y1="1" x2="23" y2="23" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      )}
+                    </button>
                   </div>
                 </label>
                 {error && <div className="form-error">{error}</div>}
                 <button className="button button-primary login-submit" disabled={busy}>
                   {busy ? 'Đang xác thực...' : 'Đăng nhập'}
-                  <span>→</span>
                 </button>
               </form>
 
@@ -1834,28 +2320,28 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
               <div className="demo-accounts-bar">
                 <span>Đăng nhập nhanh tài khoản thử nghiệm:</span>
                 <div className="demo-accounts-grid">
-                  <button type="button" className="demo-pill-btn demo-pill-admin" onClick={() => quickLogin('demo_admin')}>
-                    <strong>👑 Quản trị viên</strong>
-                    <small>demo_admin</small>
+                  <button type="button" className="demo-pill-btn demo-pill-admin" onClick={() => quickLogin('admin')}>
+                    <strong>Quản trị viên</strong>
+                    <small>admin</small>
                   </button>
-                  <button type="button" className="demo-pill-btn demo-pill-intake" onClick={() => quickLogin('demo_intake')}>
-                    <strong>📥 Tiếp nhận hồ sơ</strong>
-                    <small>demo_intake</small>
+                  <button type="button" className="demo-pill-btn demo-pill-intake" onClick={() => quickLogin('tiepnhanhoso')}>
+                    <strong>Tiếp nhận hồ sơ</strong>
+                    <small>tiepnhanhoso</small>
                   </button>
-                  <button type="button" className="demo-pill-btn demo-pill-inspector" onClick={() => quickLogin('demo_inspector')}>
-                    <strong>⚙️ Kiểm định viên</strong>
-                    <small>demo_inspector</small>
+                  <button type="button" className="demo-pill-btn demo-pill-inspector" onClick={() => quickLogin('kiemdinhvien')}>
+                    <strong>Kiểm định viên</strong>
+                    <small>kiemdinhvien</small>
                   </button>
-                  <button type="button" className="demo-pill-btn demo-pill-owner" onClick={() => quickLogin('demo_owner')}>
-                    <strong>🚗 Chủ xe</strong>
-                    <small>demo_owner</small>
+                  <button type="button" className="demo-pill-btn demo-pill-owner" onClick={() => quickLogin('chuxe')}>
+                    <strong>Chủ xe</strong>
+                    <small>chuxe</small>
                   </button>
                 </div>
               </div>
             </>
           ) : (
             <>
-              <div className="eyebrow"><i/> DỊCH VỤ DÀNH CHO KHÁCH HÀNG</div>
+              <div className="eyebrow">DỊCH VỤ DÀNH CHO KHÁCH HÀNG</div>
               <h2>Đăng ký tài khoản</h2>
               <p className="login-subtitle">
                 Đăng ký để quản lý phương tiện cá nhân, đặt lịch hẹn kiểm định và tra cứu kết quả trực tuyến.
@@ -1866,7 +2352,6 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
                   <label>
                     Họ và tên chủ xe *
                     <div className="input-wrap">
-                      <span className="input-icon">👤</span>
                       <input
                         value={displayName}
                         onChange={e => setDisplayName(e.target.value)}
@@ -1878,7 +2363,6 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
                   <label>
                     Số điện thoại *
                     <div className="input-wrap">
-                      <span className="input-icon">📞</span>
                       <input
                         value={phone}
                         onChange={e => setPhone(e.target.value)}
@@ -1889,11 +2373,23 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
                   </label>
                 </div>
 
+                <label>
+                  Email *
+                  <div className="input-wrap">
+                    <input
+                      type="email"
+                      value={regEmail}
+                      onChange={e => setRegEmail(e.target.value)}
+                      placeholder="VD: an.nguyen@gmail.com"
+                      required
+                    />
+                  </div>
+                </label>
+
                 <div className="form-row-two">
                   <label>
                     Tên đăng nhập *
                     <div className="input-wrap">
-                      <span className="input-icon">♙</span>
                       <input
                         autoComplete="username"
                         value={username}
@@ -1906,15 +2402,34 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
                   <label>
                     Mật khẩu *
                     <div className="input-wrap">
-                      <span className="input-icon">⌑</span>
                       <input
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         autoComplete="new-password"
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                         placeholder="Tối thiểu 6 ký tự"
                         required
                       />
+                      <button
+                        type="button"
+                        className="password-toggle-btn"
+                        onClick={() => setShowPassword(v => !v)}
+                        title={showPassword ? "Ẩn mật khẩu" : "Xem mật khẩu"}
+                        aria-label={showPassword ? "Ẩn mật khẩu" : "Xem mật khẩu"}
+                        tabIndex={-1}
+                      >
+                        {showPassword ? (
+                          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                            <line x1="1" y1="1" x2="23" y2="23" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                        )}
+                      </button>
                     </div>
                   </label>
                 </div>
@@ -1923,7 +2438,6 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
                   <label>
                     Số CCCD / Mã số thuế
                     <div className="input-wrap">
-                      <span className="input-icon">🪪</span>
                       <input
                         value={identity}
                         onChange={e => setIdentity(e.target.value)}
@@ -1934,7 +2448,6 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
                   <label>
                     Địa chỉ liên hệ
                     <div className="input-wrap">
-                      <span className="input-icon">📍</span>
                       <input
                         value={address}
                         onChange={e => setAddress(e.target.value)}
@@ -1948,7 +2461,6 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
 
                 <button className="button button-primary login-submit" disabled={busy}>
                   {busy ? 'Đang tạo tài khoản...' : 'Đăng ký & Vào cổng Chủ xe'}
-                  <span>→</span>
                 </button>
               </form>
 
@@ -1961,9 +2473,10 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
             </>
           )}
         </div>
-      </div>
+      )}
     </div>
-  )
+  </div>
+)
 }
 
 /* ==========================================================================
@@ -1984,7 +2497,6 @@ function Forbidden403Page({
     <div className="forbidden-403-container">
       <div className="forbidden-403-card">
         <div className="forbidden-403-badge">
-          <span>🛡️</span>
           <span>HTTP 403 · TRUY CẬP BỊ TỪ CHỐI</span>
         </div>
         <h1 className="forbidden-title">Khu Vực Hạn Chế Quyền Truy Cập</h1>
@@ -1998,14 +2510,14 @@ function Forbidden403Page({
         )}
         <div className="forbidden-actions">
           <button type="button" className="button button-primary" onClick={onBack}>
-            <span>←</span> Quay về Bàn làm việc
+            Quay về Bàn làm việc
           </button>
           <button type="button" className="button button-secondary" onClick={onSignOut}>
-            <span>⇄</span> Đổi tài khoản khác
+            Đổi tài khoản khác
           </button>
         </div>
         <div className="forbidden-footer-tip">
-          <span>💡</span> Vui lòng liên hệ <strong>Quản trị viên</strong> nếu bạn cần được cấp quyền truy cập.
+          Vui lòng liên hệ <strong>Quản trị viên</strong> nếu bạn cần được cấp quyền truy cập.
         </div>
       </div>
     </div>
@@ -2063,7 +2575,7 @@ function SupportChat({ session, onSignOut }: { session: Session; onSignOut?: () 
       {open && (
         <section className="support-chat-panel" aria-label="Trợ lý đăng kiểm">
           <header className="support-chat-header">
-            <span className="support-chat-avatar">✦</span>
+            <span className="support-chat-avatar">AI</span>
             <div><strong>Trợ lý đăng kiểm</strong><small>{roleName[session.role]} · AI hỗ trợ</small></div>
             <button type="button" aria-label="Đóng chatbot" onClick={() => setOpen(false)}>×</button>
           </header>
@@ -2117,106 +2629,23 @@ function SupportChat({ session, onSignOut }: { session: Session; onSignOut?: () 
   )
 }
 
-/* ==========================================================================
-   REQUIREMENTS AGENT PAGE (AI REQUIREMENTS ANALYSIS)
-   ========================================================================== */
-function RequirementsAgentPage({ token }: { token: string }) {
-  const [requirement, setRequirement] = useState('')
-  const [analysis, setAnalysis] = useState('')
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  const samplePrompts = [
-    'Tích hợp camera AI tự động nhận diện biển số xe khi đến cổng trung tâm đăng kiểm',
-    'Tự động tra cứu dữ liệu phạt nguội và cảnh báo phương tiện trước khi tiếp nhận',
-    'Gửi tin nhắn thông báo tự động nhắc hạn đăng kiểm cho chủ xe qua Zalo / SMS',
-  ]
-
-  async function submit(event?: FormEvent) {
-    if (event) event.preventDefault()
-    const text = requirement.trim()
-    if (text.length < 2 || busy) return
-    setBusy(true); setError(''); setAnalysis('')
-    try {
-      const result = await api.analyzeRequirement(token, text)
-      setAnalysis(result.analysis)
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Không thể phân tích yêu cầu.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <>
-      <PageHeading eyebrow="CÔNG CỤ QUẢN TRỊ CHIẾN LƯỢC" title="Phân tích yêu cầu bằng AI" description="Phân tích tác động và tính khả thi của các tính năng mới theo quy chuẩn đăng kiểm." />
-      <section className="panel requirements-agent-panel">
-        <div style={{ marginBottom: 14 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8 }}>Gợi ý mẫu yêu cầu:</span>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {samplePrompts.map((p, idx) => (
-              <button
-                key={idx}
-                type="button"
-                className="button button-outline button-sm"
-                style={{ fontSize: 12, height: 32, borderRadius: 20, padding: '0 12px' }}
-                onClick={() => setRequirement(p)}
-              >
-                ✦ {p}
-              </button>
-            ))}
-          </div>
-        </div>
-        <form onSubmit={submit}>
-          <label className="field">
-            <span>Yêu cầu cần phân tích <em>*</em></span>
-            <textarea
-              rows={4}
-              value={requirement}
-              onChange={e => setRequirement(e.target.value)}
-              placeholder="Nhập mô tả tính năng hoặc đề xuất cải tiến quy trình..."
-              required
-            />
-          </label>
-          <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-            <button className="button button-primary" disabled={busy || requirement.trim().length < 2}>
-              {busy ? 'Đang phân tích cùng Gemini AI...' : 'Phân tích yêu cầu'}
-              <span>✦</span>
-            </button>
-            {requirement && (
-              <button type="button" className="button button-ghost" onClick={() => { setRequirement(''); setAnalysis('') }}>
-                Xóa
-              </button>
-            )}
-          </div>
-        </form>
-
-        {error && <div className="form-error" style={{ marginTop: 14 }}>{error}</div>}
-
-        {analysis && (
-          <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid #e2e8f0' }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, color: '#1e3a8a' }}>✦ Kết quả phân tích từ AI:</h3>
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 18, whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: 13.5 }}>
-              {analysis}
-            </div>
-          </div>
-        )}
-      </section>
-    </>
-  )
-}
 
 /* ==========================================================================
    STANDARD CRUD PAGES (VEHICLES, OWNERS, APPOINTMENTS, INSPECTIONS)
    ========================================================================== */
-function VehiclesPage({ role, vehicles, owners, onCreate }: { role: Role; vehicles: Vehicle[]; owners: Owner[]; onCreate: (body: Omit<Vehicle, 'id'>) => Promise<void> }) {
+function VehiclesPage({ role, vehicles, owners, onCreate }: { role: Role; vehicles: Vehicle[]; owners: Owner[]; onCreate: (body: Omit<Vehicle, 'id'> | (Omit<Vehicle, 'id' | 'owner_id'> & { owner_id?: number })) => Promise<void> }) {
   const [query, setQuery] = useState(''); const [open, setOpen] = useState(false)
+  const isOwner = role === 'owner'
   const filtered = vehicles.filter(v => `${v.registration_number} ${v.chassis_number} ${v.engine_number} ${v.vehicle_type}`.toLowerCase().includes(query.toLowerCase()))
   return <>
-    <PageHeading eyebrow="DỮ LIỆU NỀN" title="Phương tiện" description="Thông tin phương tiện được quản lý trong hệ thống đăng kiểm." action={canIntake(role) ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Thêm phương tiện</button> : undefined}/>
+    <PageHeading
+      eyebrow={isOwner ? "QUẢN LÝ PHƯƠNG TIỆN" : "DỮ LIỆU NỀN"}
+      title={isOwner ? "Xe của tôi" : "Phương tiện"}
+      description={isOwner ? "Danh sách phương tiện bạn sở hữu trong hệ thống đăng kiểm." : "Thông tin phương tiện được quản lý trong hệ thống đăng kiểm."}
+      action={(canIntake(role) || isOwner) ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Thêm phương tiện</button> : undefined}
+    />
     <div className="toolbar">
       <div className="search-box">
-        <span>⌕</span>
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Tìm theo biển số, loại xe, số khung, số máy..."/>
       </div>
       <span className="result-count">{filtered.length} phương tiện</span>
@@ -2231,7 +2660,7 @@ function VehiclesPage({ role, vehicles, owners, onCreate }: { role: Role; vehicl
                 <th>LOẠI PHƯƠNG TIỆN</th>
                 <th>SỐ KHUNG</th>
                 <th>SỐ MÁY</th>
-                <th>CHỦ XE</th>
+                {!isOwner && <th>CHỦ XE</th>}
               </tr>
             </thead>
             <tbody>
@@ -2241,19 +2670,24 @@ function VehiclesPage({ role, vehicles, owners, onCreate }: { role: Role; vehicl
                   <td className="vehicle-type-cell">{v.vehicle_type}</td>
                   <td><span className="mono vehicle-code-cell">{v.chassis_number}</span></td>
                   <td><span className="mono vehicle-code-cell">{v.engine_number}</span></td>
-                  <td className="vehicle-owner-cell">
-                    <strong>{owners.find(o => o.id === v.owner_id)?.display_name ?? `Chủ xe #${v.owner_id}`}</strong>
-                  </td>
+                  {!isOwner && (
+                    <td className="vehicle-owner-cell">
+                      <strong>{owners.find(o => o.id === v.owner_id)?.display_name ?? `Chủ xe #${v.owner_id}`}</strong>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <Empty title="Không tìm thấy phương tiện" detail={query ? 'Thử thay đổi nội dung tìm kiếm.' : 'Danh sách phương tiện đang trống.'}/>
+        <Empty
+          title="Không tìm thấy phương tiện"
+          detail={query ? 'Thử thay đổi nội dung tìm kiếm.' : isOwner ? 'Bạn chưa có phương tiện nào trong danh sách. Bấm "＋ Thêm phương tiện" để thêm xe mới.' : 'Danh sách phương tiện đang trống.'}
+        />
       )}
     </section>
-    {open && <VehicleModal owners={owners} onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}
+    {open && <VehicleModal owners={owners} isOwner={isOwner} onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}
   </>
 }
 
@@ -2265,7 +2699,6 @@ function OwnersPage({ owners, onCreate }: { owners: Owner[]; onCreate: (body: Om
     <PageHeading eyebrow="DỮ LIỆU NỀN" title="Chủ xe" description="Quản lý thông tin chủ xe đã được tiếp nhận." action={<button className="button button-primary" onClick={() => setOpen(true)}>＋ Thêm chủ xe</button>}/>
     <div className="toolbar">
       <div className="search-box">
-        <span>⌕</span>
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Tìm theo tên chủ xe, số điện thoại, CCCD/MST..."/>
       </div>
       <span className="result-count">{filtered.length} chủ xe</span>
@@ -2319,7 +2752,6 @@ function AppointmentsPage({ role, vehicles, appointments, onCreate, onCancel }: 
     <PageHeading eyebrow="ĐIỀU PHỐI TIẾP NHẬN" title="Lịch hẹn đăng kiểm" description="Sắp xếp khung giờ kiểm định đảm bảo năng lực phục vụ của trung tâm." action={canCreate ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Tạo lịch hẹn</button> : undefined}/>
     <div className="toolbar">
       <div className="search-box">
-        <span>⌕</span>
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Tìm theo mã lịch hẹn, biển số xe..."/>
       </div>
       <span className="result-count">{filtered.length} lịch hẹn</span>
@@ -2467,7 +2899,6 @@ function InspectionDetail({ inspection, vehicle, token, onClose }: { inspection:
           <span>{inspection.inspection_type === 'first' ? 'Kiểm định lần đầu' : 'Kiểm định định kỳ'}</span>
         </div>
         <div className="detail-vehicle">
-          <span className="vehicle-large-icon">▣</span>
           <div>
             <small>PHƯƠNG TIỆN</small>
             <strong>{vehicle?.registration_number ?? `Xe #${inspection.vehicle_id}`}</strong>
@@ -2515,20 +2946,86 @@ function InspectionDetail({ inspection, vehicle, token, onClose }: { inspection:
 /* ==========================================================================
    UI UTILITY COMPONENTS
    ========================================================================== */
-function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) { return <div className="page-heading"><div><div className="eyebrow"><i/>{eyebrow}</div><h1>{title}</h1><p>{description}</p></div>{action && <div className="heading-action">{action}</div>}</div> }
-function StatusBadge({ value }: { value: string }) { const tone = ['active', 'passed', 'dat'].includes(value) ? 'badge-green' : ['failed', 'dd', 'ma'].includes(value) ? 'badge-red' : ['in_progress', 'mi'].includes(value) ? 'badge-blue' : value === 'cancelled' ? 'badge-gray' : 'badge-amber'; return <span className={`badge ${tone}`}><i/>{statusName[value] ?? resultName[value] ?? value}</span> }
-function Empty({ title, detail }: { title: string; detail: string }) { return <div className="empty-state"><div className="empty-art"><span>▤</span><i/></div><strong>{title}</strong><p>{detail}</p></div> }
+function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: ReactNode }) { return <div className="page-heading"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1>{description && <p>{description}</p>}</div>{action && <div className="heading-action">{action}</div>}</div> }
+function StatusBadge({ value }: { value: string }) { const tone = ['active', 'passed', 'dat'].includes(value) ? 'badge-green' : ['failed', 'dd', 'ma'].includes(value) ? 'badge-red' : ['in_progress', 'mi'].includes(value) ? 'badge-blue' : value === 'cancelled' ? 'badge-gray' : 'badge-amber'; return <span className={`badge ${tone}`}>{statusName[value] ?? resultName[value] ?? value}</span> }
+function Empty({ title, detail }: { title: string; detail: string }) { return <div className="empty-state"><strong>{title}</strong><p>{detail}</p></div> }
 function DetailField({ label, value }: { label: string; value?: string | null }) { return <div className="detail-field"><small>{label}</small><strong>{value || '—'}</strong></div> }
 function vehicleLabel(vehicles: Vehicle[], id: number) { return vehicles.find(v => v.id === id)?.registration_number ?? `Phương tiện #${id}` }
 function formatDate(value: string) { const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date) }
 function serviceName(value: string) { return ({ periodic: 'Kiểm định định kỳ', new_registration: 'Đăng ký xe mới', information_change: 'Thay đổi thông tin' } as Record<string, string>)[value] ?? value }
 function channelName(value: string) { return ({ counter: 'Tại quầy', postal: 'Bưu chính', online: 'Trực tuyến' } as Record<string, string>)[value] ?? value }
 
-function Modal({ title, subtitle, children, onClose, onSubmit, submitLabel = 'Lưu thông tin' }: { title: string; subtitle: string; children: ReactNode; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; submitLabel?: string }) { const [busy, setBusy] = useState(false); return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}><form className="form-modal" onSubmit={async e => { e.preventDefault(); setBusy(true); try { await onSubmit(e) } finally { setBusy(false) } }}><div className="modal-heading"><div><div className="eyebrow">THÔNG TIN NGHIỆP VỤ</div><h2>{title}</h2><p>{subtitle}</p></div><button type="button" className="close-button" onClick={onClose}>×</button></div><div className="modal-body">{children}</div><div className="modal-footer"><button type="button" className="button button-ghost" onClick={onClose}>Hủy</button><button className="button button-primary" disabled={busy}>{busy ? 'Đang lưu...' : submitLabel}<span>→</span></button></div></form></div> }
+function Modal({ title, subtitle, children, onClose, onSubmit, submitLabel = 'Lưu thông tin' }: { title: string; subtitle: string; children: ReactNode; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; submitLabel?: string }) { const [busy, setBusy] = useState(false); return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}><form className="form-modal" onSubmit={async e => { e.preventDefault(); setBusy(true); try { await onSubmit(e) } finally { setBusy(false) } }}><div className="modal-heading"><div><div className="eyebrow">THÔNG TIN NGHIỆP VỤ</div><h2>{title}</h2><p>{subtitle}</p></div><button type="button" className="close-button" onClick={onClose}>×</button></div><div className="modal-body">{children}</div><div className="modal-footer"><button type="button" className="button button-ghost" onClick={onClose}>Hủy</button><button className="button button-primary" disabled={busy}>{busy ? 'Đang lưu...' : submitLabel}</button></div></form></div> }
 function Field({ label, children, required = false }: { label: string; children: ReactNode; required?: boolean }) { return <label className="field"><span>{label}{required && <em> *</em>}</span>{children}</label> }
 
 function OwnerModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (body: Omit<Owner, 'id'>) => Promise<void> }) { const [error, setError] = useState(''); async function submit(e: FormEvent<HTMLFormElement>) { const f = new FormData(e.currentTarget); try { await onSubmit({ display_name: String(f.get('name')), identity_or_tax_number: String(f.get('identity')), phone: String(f.get('phone')), address: String(f.get('address')) }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể lưu chủ xe') } } return <Modal title="Thêm chủ xe" subtitle="Nhập thông tin theo giấy tờ của chủ xe." onClose={onClose} onSubmit={submit}><div className="form-grid"><Field label="Họ tên cá nhân / tên tổ chức" required><input name="name" maxLength={255} required placeholder="Nhập họ tên hoặc tên tổ chức"/></Field><Field label="Số định danh / mã số thuế" required><input name="identity" maxLength={50} required placeholder="Nhập số giấy tờ"/></Field><Field label="Số điện thoại" required><input name="phone" maxLength={30} required placeholder="Số điện thoại liên hệ"/></Field><Field label="Địa chỉ cư trú / trụ sở" required><textarea name="address" required rows={3} placeholder="Theo giấy đăng ký xe"/></Field></div>{error && <div className="form-error">{error}</div>}</Modal> }
-function VehicleModal({ owners, onClose, onSubmit }: { owners: Owner[]; onClose: () => void; onSubmit: (body: Omit<Vehicle, 'id'>) => Promise<void> }) { const [error, setError] = useState(''); async function submit(e: FormEvent<HTMLFormElement>) { const f = new FormData(e.currentTarget); try { await onSubmit({ owner_id: Number(f.get('owner')), registration_number: String(f.get('plate')), plate_classification: String(f.get('plateClass') || '') || null, chassis_number: String(f.get('chassis')), engine_number: String(f.get('engine')), vehicle_type: String(f.get('type')) }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể lưu phương tiện') } } return <Modal title="Thêm phương tiện" subtitle="Liên kết phương tiện với hồ sơ chủ xe." onClose={onClose} onSubmit={submit}><div className="form-grid"><Field label="Chủ xe" required><select name="owner" required defaultValue=""><option value="" disabled>Chọn chủ xe</option>{owners.map(o => <option key={o.id} value={o.id}>{o.display_name} · {o.phone}</option>)}</select></Field><Field label="Biển số xe" required><input name="plate" maxLength={30} required placeholder="Ví dụ: 30A-123.45"/></Field><Field label="Phân loại màu biển" ><input name="plateClass" maxLength={30} placeholder="Nếu áp dụng"/></Field><Field label="Loại phương tiện" required><input name="type" maxLength={100} required placeholder="Ô tô con, xe tải..."/></Field><Field label="Số khung" required><input name="chassis" maxLength={100} required/></Field><Field label="Số máy" required><input name="engine" maxLength={100} required/></Field></div>{owners.length === 0 && <div className="form-error">Cần tạo hồ sơ chủ xe trước khi thêm phương tiện.</div>}{error && <div className="form-error">{error}</div>}</Modal> }
+function VehicleModal({
+  owners,
+  onClose,
+  onSubmit,
+  isOwner = false,
+}: {
+  owners: Owner[];
+  onClose: () => void;
+  onSubmit: (body: Omit<Vehicle, 'id'> | (Omit<Vehicle, 'id' | 'owner_id'> & { owner_id?: number })) => Promise<void>;
+  isOwner?: boolean;
+}) {
+  const [error, setError] = useState('');
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    const f = new FormData(e.currentTarget);
+    try {
+      const ownerVal = f.get('owner');
+      await onSubmit({
+        owner_id: isOwner ? undefined : Number(ownerVal),
+        registration_number: String(f.get('plate') || '').trim().toUpperCase(),
+        plate_classification: String(f.get('plateClass') || '').trim() || null,
+        chassis_number: String(f.get('chassis') || '').trim().toUpperCase(),
+        engine_number: String(f.get('engine') || '').trim().toUpperCase(),
+        vehicle_type: String(f.get('type') || '').trim()
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Không thể lưu phương tiện');
+    }
+  }
+
+  return (
+    <Modal
+      title={isOwner ? "Thêm phương tiện mới" : "Thêm phương tiện"}
+      subtitle={isOwner ? "Đăng ký thông tin xe vào danh sách quản lý của bạn." : "Liên kết phương tiện với hồ sơ chủ xe."}
+      onClose={onClose}
+      onSubmit={submit}
+      submitLabel="Thêm phương tiện"
+    >
+      <div className="form-grid">
+        {!isOwner && (
+          <Field label="Chủ xe" required>
+            <select name="owner" required defaultValue="">
+              <option value="" disabled>Chọn chủ xe</option>
+              {owners.map(o => <option key={o.id} value={o.id}>{o.display_name} · {o.phone}</option>)}
+            </select>
+          </Field>
+        )}
+        <Field label="Biển số xe" required>
+          <input name="plate" maxLength={30} required placeholder="Ví dụ: 30A-123.45" style={{ textTransform: 'uppercase' }} />
+        </Field>
+        <Field label="Phân loại màu biển">
+          <input name="plateClass" maxLength={30} placeholder="Trắng, Vàng, Xanh (nếu có)" />
+        </Field>
+        <Field label="Loại phương tiện" required>
+          <input name="type" maxLength={100} required placeholder="Ô tô con, xe tải..." />
+        </Field>
+        <Field label="Số khung (VIN)" required>
+          <input name="chassis" maxLength={100} required placeholder="Số khung theo giấy đăng ký" style={{ textTransform: 'uppercase' }} />
+        </Field>
+        <Field label="Số máy" required>
+          <input name="engine" maxLength={100} required placeholder="Số máy theo giấy đăng ký" style={{ textTransform: 'uppercase' }} />
+        </Field>
+      </div>
+      {!isOwner && owners.length === 0 && <div className="form-error">Cần tạo hồ sơ chủ xe trước khi thêm phương tiện.</div>}
+      {error && <div className="form-error">{error}</div>}
+    </Modal>
+  );
+}
 function AppointmentModal({ vehicles, onClose, onSubmit }: { vehicles: Vehicle[]; onClose: () => void; onSubmit: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void> }) { const [error, setError] = useState(''); async function submit(e: FormEvent<HTMLFormElement>) { const f = new FormData(e.currentTarget); try { await onSubmit({ vehicle_id: Number(f.get('vehicle')), appointment_date: String(f.get('date')), start_time: String(f.get('start')), end_time: String(f.get('end')), service_type: String(f.get('service')) }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể tạo lịch') } } return <Modal title="Tạo lịch hẹn" subtitle="Khung giờ phải nằm trọn trong buổi sáng hoặc buổi chiều." onClose={onClose} onSubmit={submit}><div className="form-grid"><Field label="Phương tiện" required><select name="vehicle" required defaultValue=""><option value="" disabled>Chọn phương tiện</option>{vehicles.map(v => <option key={v.id} value={v.id}>{v.registration_number} · {v.vehicle_type}</option>)}</select></Field><Field label="Ngày hẹn" required><input name="date" type="date" required min={new Date().toISOString().slice(0, 10)}/></Field><Field label="Loại dịch vụ" required><select name="service" required><option value="periodic">Kiểm định định kỳ</option><option value="new_registration">Đăng ký xe mới</option><option value="information_change">Thay đổi thông tin</option></select></Field><Field label="Giờ bắt đầu" required><select name="start" required><option value="06:30">06:30</option><option value="07:00">07:00</option><option value="08:00">08:00</option><option value="09:00">09:00</option><option value="10:00">10:00</option><option value="13:00">13:00</option><option value="14:00">14:00</option><option value="15:00">15:00</option><option value="16:00">16:00</option><option value="17:00">17:00</option></select></Field><Field label="Giờ kết thúc" required><select name="end" required><option value="07:00">07:00</option><option value="08:00">08:00</option><option value="09:00">09:00</option><option value="10:00">10:00</option><option value="11:00">11:00</option><option value="14:00">14:00</option><option value="15:00">15:00</option><option value="16:00">16:00</option><option value="17:00">17:00</option><option value="17:30">17:30</option></select></Field></div>{error && <div className="form-error">{error}</div>}</Modal> }
 
 function InspectionModal({ vehicles, onClose, onSubmit, defaultVehicleId }: { vehicles: Vehicle[]; onClose: () => void; onSubmit: (body: Pick<Inspection, 'vehicle_id' | 'inspection_type' | 'intake_channel' | 'old_certificate_management_number' | 'registration_document_number' | 'insurance_contract_number' | 'insurance_expiry'>) => Promise<void>; defaultVehicleId?: number }) {
@@ -2647,7 +3144,7 @@ function InspectionModal({ vehicles, onClose, onSubmit, defaultVehicleId }: { ve
           />
           {oldCertError ? (
             <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px', lineHeight: 1.4, fontWeight: 500 }}>
-              ⚠ {oldCertError}
+              {oldCertError}
             </div>
           ) : (
             <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px', lineHeight: 1.3 }}>
@@ -2665,3 +3162,1121 @@ function InspectionModal({ vehicles, onClose, onSubmit, defaultVehicleId }: { ve
     </Modal>
   );
 }
+
+/* ==========================================================================
+   SYSTEM ROLES & USER MANAGEMENT PAGE
+   ========================================================================== */
+function SystemRolesPage({ session }: { session: Session }) {
+  const [accounts, setAccounts] = useState<AccountListItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'locked'>('all')
+
+  // Modals
+  const [openCreate, setOpenCreate] = useState(false)
+  const [roleModalAccount, setRoleModalAccount] = useState<AccountListItem | null>(null)
+  const [selectedNewRole, setSelectedNewRole] = useState<Role>('intake')
+  const [resetPwAccount, setResetPwAccount] = useState<AccountListItem | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [editProfileAccount, setEditProfileAccount] = useState<AccountListItem | null>(null)
+  const [editDisplayName, setEditDisplayName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editPhone, setEditPhone] = useState('')
+  const [confirmModal, setConfirmModal] = useState<{
+    type: 'lock' | 'unlock' | 'delete'
+    account: AccountListItem
+  } | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [activeMenuId, setActiveMenuId] = useState<number | null>(null)
+
+  useEffect(() => {
+    function handleClickOutside() {
+      setActiveMenuId(null)
+    }
+    if (activeMenuId !== null) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [activeMenuId])
+
+  // Auto-dismiss floating toast notifications
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(''), 4500)
+    return () => clearTimeout(timer)
+  }, [notice])
+
+  useEffect(() => {
+    if (!error) return
+    const timer = setTimeout(() => setError(''), 5500)
+    return () => clearTimeout(timer)
+  }, [error])
+
+  // Create form state
+  const [createUsername, setCreateUsername] = useState('')
+  const [createPassword, setCreatePassword] = useState('')
+  const [createRole, setCreateRole] = useState<Role>('inspector')
+  const [createDisplayName, setCreateDisplayName] = useState('')
+  const [createEmail, setCreateEmail] = useState('')
+  const [createPhone, setCreatePhone] = useState('')
+
+  const loadAccounts = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await api.getAdminAccounts(session.token)
+      setAccounts(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể tải danh sách tài khoản.')
+    } finally {
+      setLoading(false)
+    }
+  }, [session.token])
+
+  useEffect(() => {
+    loadAccounts()
+  }, [loadAccounts])
+
+  const filtered = accounts.filter(acc => {
+    const textMatch = `${acc.username} ${acc.display_name || ''} ${acc.email || ''} ${acc.phone || ''}`
+      .toLowerCase()
+      .includes(query.toLowerCase())
+    const statusMatch =
+      statusFilter === 'all' ||
+      (statusFilter === 'active' && acc.is_active) ||
+      (statusFilter === 'locked' && !acc.is_active)
+    return textMatch && statusMatch
+  })
+
+  const hasOtherAdmin = accounts.some(a => a.role === 'admin' && (!roleModalAccount || a.id !== roleModalAccount.id))
+  const hasAnyAdmin = accounts.some(a => a.role === 'admin')
+
+
+  async function handleUpdateRole(e: FormEvent) {
+    e.preventDefault()
+    if (!roleModalAccount) return
+    if (selectedNewRole === 'admin' && hasOtherAdmin && roleModalAccount.role !== 'admin') {
+      setError('Hệ thống chỉ cho phép duy nhất 1 tài khoản Quản trị viên. Không thể phân quyền Quản trị viên cho người thứ hai.')
+      return
+    }
+    setActionLoading(true)
+    setError('')
+    try {
+      const updated = await api.updateAccountRole(session.token, roleModalAccount.id, selectedNewRole)
+      setAccounts(prev => prev.map(a => a.id === updated.id ? updated : a))
+      setNotice(`Đã cập nhật vai trò của tài khoản '${updated.username}' thành ${roleName[updated.role]}.`)
+      setRoleModalAccount(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Đổi vai trò thất bại.')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  function handleOpenStatusConfirm(acc: AccountListItem) {
+    setConfirmModal({
+      type: acc.is_active ? 'lock' : 'unlock',
+      account: acc,
+    })
+  }
+
+  function handleOpenDeleteConfirm(acc: AccountListItem) {
+    if (acc.username === session.username) {
+      setError('Bạn không thể tự xóa tài khoản quản trị bạn đang đăng nhập.')
+      return
+    }
+    if (acc.role === 'admin') {
+      setError('Không thể xóa tài khoản Quản trị viên hệ thống.')
+      return
+    }
+    setConfirmModal({
+      type: 'delete',
+      account: acc,
+    })
+  }
+
+  async function handleConfirmAction(e: FormEvent) {
+    e.preventDefault()
+    if (!confirmModal) return
+    const { type, account: acc } = confirmModal
+    setActionLoading(true)
+    setError('')
+    try {
+      if (type === 'lock' || type === 'unlock') {
+        const nextActive = type === 'unlock'
+        const updated = await api.updateAccountStatus(session.token, acc.id, nextActive)
+        setAccounts(prev => prev.map(a => a.id === updated.id ? updated : a))
+        setNotice(`Đã ${nextActive ? 'mở khóa' : 'khóa'} tài khoản '${updated.username}' thành công.`)
+      } else if (type === 'delete') {
+        const res = await api.deleteAdminAccount(session.token, acc.id)
+        setAccounts(prev => prev.filter(a => a.id !== acc.id))
+        setNotice(res.message || `Đã xóa tài khoản '@${acc.username}' thành công.`)
+      }
+      setConfirmModal(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Thao tác thất bại.')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  async function handleResetPassword(e: FormEvent) {
+    e.preventDefault()
+    if (!resetPwAccount) return
+    if (newPassword.length < 6) {
+      setError('Mật khẩu mới phải có ít nhất 6 ký tự.')
+      return
+    }
+    setActionLoading(true)
+    setError('')
+    try {
+      const res = await api.resetAccountPassword(session.token, resetPwAccount.id, newPassword)
+      setNotice(res.message || 'Đặt lại mật khẩu thành công.')
+      setResetPwAccount(null)
+      setNewPassword('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Đặt lại mật khẩu thất bại.')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  function handleOpenEditProfile(acc: AccountListItem) {
+    setEditProfileAccount(acc)
+    setEditDisplayName(acc.display_name || '')
+    setEditEmail(acc.email || '')
+    setEditPhone(acc.phone || '')
+  }
+
+  async function handleUpdateProfile(e: FormEvent) {
+    e.preventDefault()
+    if (!editProfileAccount) return
+    setActionLoading(true)
+    setError('')
+    try {
+      const updated = await api.updateAdminAccountProfile(session.token, editProfileAccount.id, {
+        display_name: editDisplayName.trim() || undefined,
+        email: editEmail.trim() || undefined,
+        phone: editPhone.trim() || undefined,
+      })
+      setAccounts(prev => prev.map(a => a.id === updated.id ? updated : a))
+      setNotice(`Đã cập nhật thông tin tài khoản '@${updated.username}' thành công.`)
+      setEditProfileAccount(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cập nhật thông tin thất bại.')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  async function handleCreateAccount(e: FormEvent) {
+    e.preventDefault()
+    if (createRole === 'admin' && hasAnyAdmin) {
+      setError('Hệ thống chỉ cho phép duy nhất 1 tài khoản Quản trị viên.')
+      return
+    }
+    setActionLoading(true)
+    setError('')
+    try {
+      const created = await api.createAdminAccount(session.token, {
+        username: createUsername.trim().toLowerCase(),
+        password: createPassword,
+        role: createRole,
+        display_name: createDisplayName.trim() || undefined,
+        email: createEmail.trim() || undefined,
+        phone: createPhone.trim() || undefined,
+      })
+      setAccounts(prev => [created, ...prev])
+      setNotice(`Đã tạo tài khoản '${created.username}' (${roleName[created.role]}) thành công!`)
+      setOpenCreate(false)
+      setCreateUsername('')
+      setCreatePassword('')
+      setCreateDisplayName('')
+      setCreateEmail('')
+      setCreatePhone('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Tạo tài khoản thất bại.')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="QUẢN TRỊ HỆ THỐNG"
+        title="Phân quyền hệ thống"
+        action={
+          <button className="button button-primary" onClick={() => setOpenCreate(true)}>
+            ＋ Thêm tài khoản mới
+          </button>
+        }
+      />
+
+      {/* Filter and Search Bar */}
+      <div className="roles-filter-bar">
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', width: '100%', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="search-box" style={{ width: '280px' }}>
+              <input
+                type="text"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Tìm tên, @username, email, SĐT..."
+              />
+            </div>
+
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value as any)}
+              style={{ height: '38px', padding: '0 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+            >
+              <option value="all">Tất cả trạng thái</option>
+              <option value="active">Đang hoạt động</option>
+              <option value="locked">Đã khóa</option>
+            </select>
+          </div>
+
+          <div style={{ fontWeight: 700, fontSize: '14.5px', color: '#64748b' }}>
+            Danh sách tài khoản ({filtered.length})
+          </div>
+        </div>
+      </div>
+
+      {/* Accounts Table */}
+      <section className="panel list-panel roles-panel">
+        {loading ? (
+          <div style={{ padding: '50px 20px', textAlign: 'center' }}>
+            <div className="loading-line" style={{ display: 'inline-flex' }}>
+              <span /> Đang tải dữ liệu phân quyền tài khoản...
+            </div>
+          </div>
+        ) : filtered.length ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>TÀI KHOẢN & NGƯỜI DÙNG</th>
+                  <th>VAI TRÒ PHÂN QUYỀN</th>
+                  <th>LIÊN LẠC (EMAIL / SĐT)</th>
+                  <th>TRẠNG THÁI</th>
+                  <th style={{ textAlign: 'right' }}>THAO TÁC</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(acc => (
+                  <tr key={acc.id}>
+                    <td>
+                      <div className="account-cell-user">
+                        <div className="account-mini-avatar">
+                          {acc.avatar_url ? (
+                            <img src={acc.avatar_url} alt={acc.username} />
+                          ) : (
+                            (acc.display_name || acc.username).slice(0, 1).toUpperCase()
+                          )}
+                        </div>
+                        <div className="account-user-info">
+                          <span className="account-display-name">
+                            {acc.display_name || acc.username}
+                            {acc.username === session.username && (
+                              <span style={{ fontSize: '11px', color: '#0284c7', marginLeft: '6px', fontWeight: 600 }}>
+                                (Bạn)
+                              </span>
+                            )}
+                          </span>
+                          <span className="account-username-sub">@{acc.username}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`role-badge-pill role-badge-${acc.role}`}>
+                        {roleName[acc.role]}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '13px' }}>
+                        <span>{acc.email || '—'}</span>
+                        <span style={{ color: '#64748b' }}>{acc.phone || '—'}</span>
+                      </div>
+                    </td>
+                    <td>
+                      {acc.username === session.username ? (
+                        <span className="status-badge-pill status-badge-active" title="Tài khoản quản trị bạn đang đăng nhập">
+                          Hoạt động
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className={`status-badge-pill ${acc.is_active ? 'status-badge-active' : 'status-badge-locked'}`}
+                          onClick={() => handleOpenStatusConfirm(acc)}
+                          title={acc.is_active ? "Bấm để khóa tài khoản này" : "Bấm để mở khóa tài khoản này"}
+                        >
+                          {acc.is_active ? 'Hoạt động' : 'Tạm khóa'}
+                        </button>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div className="action-dropdown-container">
+                        <button
+                          type="button"
+                          className={`action-dots-button ${activeMenuId === acc.id ? 'active' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setActiveMenuId(activeMenuId === acc.id ? null : acc.id)
+                          }}
+                          title="Thao tác"
+                        >
+                          ⋮
+                        </button>
+
+                        {activeMenuId === acc.id && (
+                          <div className="action-dropdown-menu" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              className="dropdown-item"
+                              onClick={() => {
+                                setActiveMenuId(null)
+                                handleOpenEditProfile(acc)
+                              }}
+                            >
+                              Đổi thông tin
+                            </button>
+
+                            <button
+                              type="button"
+                              className="dropdown-item"
+                              onClick={() => {
+                                setActiveMenuId(null)
+                                setRoleModalAccount(acc)
+                                setSelectedNewRole(acc.role === 'admin' ? 'intake' : acc.role)
+                              }}
+                            >
+                              Đổi quyền
+                            </button>
+
+                            <button
+                              type="button"
+                              className="dropdown-item"
+                              onClick={() => {
+                                setActiveMenuId(null)
+                                setResetPwAccount(acc)
+                                setNewPassword('')
+                              }}
+                            >
+                              Đổi MK
+                            </button>
+
+                            {acc.username !== session.username && (
+                              <>
+                                <div className="dropdown-divider" />
+                                <button
+                                  type="button"
+                                  className="dropdown-item dropdown-item-danger"
+                                  onClick={() => {
+                                    setActiveMenuId(null)
+                                    handleOpenDeleteConfirm(acc)
+                                  }}
+                                  style={{ color: '#dc2626' }}
+                                >
+                                  Xóa tài khoản
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty
+            title="Không tìm thấy tài khoản phù hợp"
+            detail={query || statusFilter !== 'all' ? 'Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.' : 'Hệ thống chưa có tài khoản nào.'}
+          />
+        )}
+      </section>
+
+      {/* Modal: Edit Account Profile */}
+      {editProfileAccount && (
+        <Modal
+          title={`Đổi thông tin: @${editProfileAccount.username}`}
+          subtitle="Cập nhật họ tên, email và số điện thoại liên hệ của tài khoản."
+          onClose={() => setEditProfileAccount(null)}
+          onSubmit={handleUpdateProfile}
+          submitLabel={actionLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <Field label="Tên đăng nhập (username)">
+              <input
+                type="text"
+                value={`@${editProfileAccount.username}`}
+                disabled
+                style={{ background: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
+              />
+            </Field>
+
+            <Field label="Họ và tên / Tên hiển thị">
+              <input
+                type="text"
+                value={editDisplayName}
+                onChange={e => setEditDisplayName(e.target.value)}
+                placeholder="VD: Nguyễn Văn An"
+              />
+            </Field>
+
+            <Field label="Email liên lạc">
+              <input
+                type="email"
+                value={editEmail}
+                onChange={e => setEditEmail(e.target.value)}
+                placeholder="user@kiemdinh.vn"
+              />
+            </Field>
+
+            <Field label="Số điện thoại">
+              <input
+                type="tel"
+                value={editPhone}
+                onChange={e => setEditPhone(e.target.value)}
+                placeholder="0912345678"
+              />
+            </Field>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal: Change Role */}
+      {roleModalAccount && (
+        <Modal
+          title={`Phân quyền tài khoản: @${roleModalAccount.username}`}
+          subtitle="Chọn vai trò phân quyền hệ thống mới cho người dùng này."
+          onClose={() => setRoleModalAccount(null)}
+          onSubmit={handleUpdateRole}
+          submitLabel={actionLoading ? 'Đang lưu...' : 'Lưu vai trò'}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <strong>Tài khoản:</strong> {roleModalAccount.display_name || roleModalAccount.username} (@{roleModalAccount.username})
+            </div>
+            <div>
+              <strong>Vai trò hiện tại:</strong>{' '}
+              <span className={`role-badge-pill role-badge-${roleModalAccount.role}`}>
+                {roleName[roleModalAccount.role]}
+              </span>
+            </div>
+
+            {roleModalAccount.username === session.username ? (
+              <div style={{ padding: '12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
+                Đây là tài khoản quản trị bạn đang đăng nhập. Bạn không thể tự thay đổi vai trò của chính mình để tránh mất quyền quản trị.
+              </div>
+            ) : (
+              <Field label="Chọn vai trò phân quyền mới" required>
+                <select
+                  value={selectedNewRole}
+                  onChange={e => setSelectedNewRole(e.target.value as Role)}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                >
+                  <option value="intake">Nhân viên tiếp nhận (Tiếp nhận hồ sơ, điều phối lịch hẹn)</option>
+                  <option value="inspector">Kiểm định viên (Đo kiểm chuyền kỹ thuật, chốt kết quả)</option>
+                  <option value="owner">Chủ phương tiện (Quản lý xe và đăng ký kiểm định trực tuyến)</option>
+                </select>
+              </Field>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal: Reset Password */}
+      {resetPwAccount && (
+        <Modal
+          title={`Đặt lại mật khẩu: @${resetPwAccount.username}`}
+          subtitle="Thiết lập mật khẩu đăng nhập mới cho tài khoản."
+          onClose={() => setResetPwAccount(null)}
+          onSubmit={handleResetPassword}
+          submitLabel={actionLoading ? 'Đang xử lý...' : 'Xác nhận đổi mật khẩu'}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <p style={{ margin: 0, fontSize: '13.5px', color: '#475569' }}>
+              Đặt lại mật khẩu đăng nhập mới cho tài khoản <strong>{resetPwAccount.username}</strong>:
+            </p>
+            <Field label="Mật khẩu mới (Tối thiểu 6 ký tự)" required>
+              <input
+                type="text"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                placeholder="Nhập mật khẩu mới..."
+                required
+                minLength={6}
+              />
+            </Field>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal: Create Account */}
+      {openCreate && (
+        <Modal
+          title="Tạo tài khoản & Phân quyền mới"
+          subtitle="Tạo thông tin đăng nhập và gán vai trò quyền hạn ban đầu."
+          onClose={() => setOpenCreate(false)}
+          onSubmit={handleCreateAccount}
+          submitLabel={actionLoading ? 'Đang tạo...' : 'Tạo tài khoản'}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <Field label="Tên đăng nhập (username)" required>
+              <input
+                type="text"
+                required
+                value={createUsername}
+                onChange={e => setCreateUsername(e.target.value)}
+                placeholder="Ví dụ: kiemdinh_vien01"
+              />
+            </Field>
+
+            <Field label="Mật khẩu khởi tạo" required>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={createPassword}
+                onChange={e => setCreatePassword(e.target.value)}
+                placeholder="Tối thiểu 6 ký tự..."
+              />
+            </Field>
+
+            <Field label="Vai trò / Phân quyền hệ thống" required>
+              <select
+                value={createRole}
+                onChange={e => setCreateRole(e.target.value as Role)}
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+              >
+                <option value="intake">Nhân viên tiếp nhận (Tiếp nhận hồ sơ & lịch hẹn)</option>
+                <option value="inspector">Kiểm định viên (Kỹ thuật chuyền kiểm định)</option>
+                <option value="owner">Chủ phương tiện (Chủ xe)</option>
+              </select>
+            </Field>
+
+            <Field label="Tên hiển thị (Họ và tên)">
+              <input
+                type="text"
+                value={createDisplayName}
+                onChange={e => setCreateDisplayName(e.target.value)}
+                placeholder="Ví dụ: Nguyễn Văn Bình"
+              />
+            </Field>
+
+            <div className="form-row-two">
+              <Field label="Email liên lạc">
+                <input
+                  type="email"
+                  value={createEmail}
+                  onChange={e => setCreateEmail(e.target.value)}
+                  placeholder="user@kiemdinh.vn"
+                />
+              </Field>
+
+              <Field label="Số điện thoại">
+                <input
+                  type="tel"
+                  value={createPhone}
+                  onChange={e => setCreatePhone(e.target.value)}
+                  placeholder="0912345678"
+                />
+              </Field>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal: Confirm Action (Lock / Unlock / Delete) */}
+      {confirmModal && (
+        <Modal
+          title={
+            confirmModal.type === 'lock'
+              ? `Khóa tài khoản: @${confirmModal.account.username}`
+              : confirmModal.type === 'unlock'
+              ? `Mở khóa tài khoản: @${confirmModal.account.username}`
+              : `Xóa tài khoản: @${confirmModal.account.username}`
+          }
+          subtitle={
+            confirmModal.type === 'lock'
+              ? 'Tài khoản bị khóa sẽ không thể đăng nhập vào hệ thống.'
+              : confirmModal.type === 'unlock'
+              ? 'Khôi phục quyền đăng nhập bình thường cho người dùng này.'
+              : 'Thao tác này sẽ xóa vĩnh viễn và không thể hoàn tác.'
+          }
+          onClose={() => setConfirmModal(null)}
+          onSubmit={handleConfirmAction}
+          submitLabel={
+            actionLoading
+              ? 'Đang xử lý...'
+              : confirmModal.type === 'lock'
+              ? 'Xác nhận khóa'
+              : confirmModal.type === 'unlock'
+              ? 'Xác nhận mở khóa'
+              : 'Xác nhận xóa vĩnh viễn'
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '14px', lineHeight: 1.6 }}>
+            {confirmModal.type === 'delete' ? (
+              <div style={{ padding: '14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b' }}>
+                ⚠️ Bạn có chắc chắn muốn <strong>xóa vĩnh viễn</strong> tài khoản <strong>@{confirmModal.account.username}</strong> ({confirmModal.account.display_name || 'Người dùng'}) không?
+                <div style={{ marginTop: '8px', fontSize: '13px', color: '#b91c1c' }}>
+                  Toàn bộ thông tin đăng nhập của người dùng này sẽ bị xóa khỏi hệ thống.
+                </div>
+              </div>
+            ) : confirmModal.type === 'lock' ? (
+              <div style={{ padding: '14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', color: '#92400e' }}>
+                Bạn có chắc chắn muốn <strong>tạm khóa</strong> tài khoản <strong>@{confirmModal.account.username}</strong> ({confirmModal.account.display_name || 'Người dùng'}) không?
+                <div style={{ marginTop: '8px', fontSize: '13px', color: '#b45309' }}>
+                  Người dùng này sẽ không thể đăng nhập cho đến khi được mở khóa lại.
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: '14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', color: '#166534' }}>
+                Bạn có chắc chắn muốn <strong>mở khóa</strong> cho tài khoản <strong>@{confirmModal.account.username}</strong> ({confirmModal.account.display_name || 'Người dùng'}) không?
+                <div style={{ marginTop: '8px', fontSize: '13px', color: '#15803d' }}>
+                  Người dùng này sẽ có thể tiếp tục đăng nhập và làm việc bình thường.
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Floating Toast Notification Messages (Bottom-Right) */}
+      <div className="toast-container" aria-live="polite">
+        {error && (
+          <div className="toast-message toast-error" role="alert">
+            <span className="toast-icon">!</span>
+            <div className="toast-content">{error}</div>
+            <button type="button" className="toast-close" onClick={() => setError('')} aria-label="Đóng thông báo">×</button>
+          </div>
+        )}
+        {notice && (
+          <div className="toast-message toast-success" role="status">
+            <span className="toast-icon">✓</span>
+            <div className="toast-content">{notice}</div>
+            <button type="button" className="toast-close" onClick={() => setNotice('')} aria-label="Đóng thông báo">×</button>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+/* ==========================================================================
+   PERSONAL PROFILE EDIT PAGE
+   ========================================================================== */
+function ProfilePage({
+  session,
+  onProfileUpdated,
+  onBack,
+}: {
+  session: Session
+  onProfileUpdated: (updated: UserProfile) => void
+  onBack: () => void
+}) {
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  // Auto-dismiss floating toast notifications
+  useEffect(() => {
+    if (!success) return
+    const timer = setTimeout(() => setSuccess(''), 4500)
+    return () => clearTimeout(timer)
+  }, [success])
+
+  useEffect(() => {
+    if (!error) return
+    const timer = setTimeout(() => setError(''), 5500)
+    return () => clearTimeout(timer)
+  }, [error])
+
+  const [displayName, setDisplayName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [avatarUrl, setAvatarUrl] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function handleAvatarFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setError('Vui lòng chọn một tệp hình ảnh hợp lệ (JPG, PNG, WebP).')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (loadEvent) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const MAX_DIM = 320
+        let w = img.width
+        let h = img.height
+        if (w > h) {
+          if (w > MAX_DIM) {
+            h = Math.round((h * MAX_DIM) / w)
+            w = MAX_DIM
+          }
+        } else {
+          if (h > MAX_DIM) {
+            w = Math.round((w * MAX_DIM) / h)
+            h = MAX_DIM
+          }
+        }
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h)
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.88)
+          setAvatarUrl(dataUrl)
+        }
+      }
+      img.src = loadEvent.target?.result as string
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Password fields
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showCurrentPw, setShowCurrentPw] = useState(false)
+  const [showNewPw, setShowNewPw] = useState(false)
+  const [showConfirmPw, setShowConfirmPw] = useState(false)
+
+
+
+  useEffect(() => {
+    let isMounted = true
+    setLoading(true)
+    api.getProfile(session.token)
+      .then(p => {
+        if (!isMounted) return
+        setDisplayName(p.display_name || '')
+        setEmail(p.email || '')
+        setPhone(p.phone || '')
+        setAvatarUrl(p.avatar_url || '')
+      })
+      .catch(err => {
+        if (!isMounted) return
+        setError(err instanceof Error ? err.message : 'Không thể tải thông tin hồ sơ.')
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false)
+      })
+    return () => { isMounted = false }
+  }, [session.token])
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+
+    if (newPassword) {
+      if (!currentPassword) {
+        setError('Vui lòng nhập mật khẩu hiện tại để xác nhận đổi mật khẩu.')
+        return
+      }
+      if (newPassword.length < 6) {
+        setError('Mật khẩu mới phải có ít nhất 6 ký tự.')
+        return
+      }
+      if (newPassword !== confirmPassword) {
+        setError('Mật khẩu xác nhận không khớp với mật khẩu mới.')
+        return
+      }
+    }
+
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('Định dạng email không hợp lệ (Ví dụ: user@example.com).')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const updated = await api.updateProfile(session.token, {
+        display_name: displayName.trim() || null,
+        email: email.trim() || null,
+        phone: phone.trim() || null,
+        avatar_url: avatarUrl.trim() || null,
+        current_password: newPassword ? currentPassword : null,
+        new_password: newPassword ? newPassword : null,
+      })
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setSuccess('Cập nhật thông tin cá nhân thành công!')
+      onProfileUpdated(updated)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cập nhật thất bại. Vui lòng thử lại.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const roleLabels: Record<Role, string> = {
+    admin: 'Quản trị viên hệ thống (Toàn quyền)',
+    intake: 'Nhân viên tiếp nhận hồ sơ đăng kiểm',
+    inspector: 'Kiểm định viên kỹ thuật chuyền',
+    owner: 'Chủ phương tiện xe cơ giới',
+  }
+
+  if (loading) {
+    return (
+      <div className="card" style={{ padding: '60px 20px', textAlign: 'center' }}>
+        <div className="loading-line" style={{ display: 'inline-flex' }}>
+          <span /> Đang đồng bộ thông tin tài khoản...
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="profile-page-wrapper">
+      <div className="profile-top-header">
+        <div>
+          <div className="eyebrow">TÀI KHOẢN VÀ ĐỊNH DANH</div>
+          <h2>Hồ sơ cá nhân</h2>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="profile-main-grid">
+        {/* Left Column: Avatar & Overview */}
+        <div className="card profile-avatar-card">
+          <div className="profile-avatar-display">
+            <div
+              className="profile-avatar-circle"
+              onClick={() => fileInputRef.current?.click()}
+              title="Bấm vào để đổi ảnh đại diện"
+            >
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt="Ảnh đại diện"
+                  onError={() => {
+                    // Fallback on broken image link
+                  }}
+                />
+              ) : (
+                <span className="profile-avatar-fallback">
+                  {(displayName || session.username).slice(0, 1).toUpperCase()}
+                </span>
+              )}
+              <div className="profile-avatar-overlay">
+                <span>Đổi ảnh</span>
+              </div>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleAvatarFileChange}
+            />
+
+            <div className="profile-meta-center">
+              <h3>{displayName || session.username}</h3>
+              <span className="profile-username-tag">@{session.username}</span>
+              <div style={{ marginTop: '8px' }}>
+                <span className={`role-badge-pill role-badge-${session.role}`}>
+                  {roleName[session.role]}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Editable Details and Password */}
+        <div className="profile-content-cards">
+          {/* Section 1: Basic Information */}
+          <div className="card profile-section-box">
+            <div className="section-header">
+              <div className="section-badge">1</div>
+              <div>
+                <h3>Thông tin cá nhân</h3>
+                <p>Tên hiển thị và các thông tin liên lạc được hiển thị trên hệ thống.</p>
+              </div>
+            </div>
+
+            <div className="form-grid">
+              <Field label="Tên hiển thị" required>
+                <input
+                  type="text"
+                  required
+                  value={displayName}
+                  onChange={e => setDisplayName(e.target.value)}
+                  placeholder="Ví dụ: Nguyễn Văn An"
+                  maxLength={255}
+                />
+              </Field>
+
+              <Field label="Địa chỉ Email">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="Ví dụ: nguyenvana@dangkiem.vn"
+                  maxLength={255}
+                />
+              </Field>
+
+              <Field label="Số điện thoại liên lạc">
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  placeholder="Ví dụ: 0912345678"
+                  maxLength={30}
+                />
+              </Field>
+
+              <Field label="Tên đăng nhập (Cố định)">
+                <input
+                  type="text"
+                  disabled
+                  value={session.username}
+                  className="input-disabled"
+                  title="Tên tài khoản không thể thay đổi sau khi đăng ký"
+                />
+              </Field>
+
+              <div style={{ gridColumn: '1 / -1' }}>
+                <Field label="Vai trò / Quyền hạn trên hệ thống">
+                  <input
+                    type="text"
+                    disabled
+                    value={roleLabels[session.role]}
+                    className="input-disabled"
+                  />
+                </Field>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Password Management */}
+          <div className="card profile-section-box" style={{ marginTop: '20px' }}>
+            <div className="section-header">
+              <div className="section-badge">2</div>
+              <div>
+                <h3>Đổi mật khẩu tài khoản</h3>
+                <p>Bảo vệ an toàn cho tài khoản của bạn. <em>(Để trống nếu không muốn đổi mật khẩu)</em></p>
+              </div>
+            </div>
+
+            <div className="form-grid">
+              <div style={{ gridColumn: '1 / -1' }}>
+                <Field label="Mật khẩu hiện tại (Bắt buộc nếu đổi mật khẩu)">
+                  <div className="pw-input-container">
+                    <input
+                      type={showCurrentPw ? 'text' : 'password'}
+                      value={currentPassword}
+                      onChange={e => setCurrentPassword(e.target.value)}
+                      placeholder="Nhập mật khẩu hiện tại"
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      className="pw-toggle-inline"
+                      onClick={() => setShowCurrentPw(!showCurrentPw)}
+                    >
+                      {showCurrentPw ? 'Ẩn' : 'Hiện'}
+                    </button>
+                  </div>
+                </Field>
+              </div>
+
+              <Field label="Mật khẩu mới">
+                <div className="pw-input-container">
+                  <input
+                    type={showNewPw ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder="Tối thiểu 6 ký tự"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className="pw-toggle-inline"
+                    onClick={() => setShowNewPw(!showNewPw)}
+                  >
+                    {showNewPw ? 'Ẩn' : 'Hiện'}
+                  </button>
+                </div>
+              </Field>
+
+              <Field label="Xác nhận mật khẩu mới">
+                <div className="pw-input-container">
+                  <input
+                    type={showConfirmPw ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder="Nhập lại mật khẩu mới"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className="pw-toggle-inline"
+                    onClick={() => setShowConfirmPw(!showConfirmPw)}
+                  >
+                    {showConfirmPw ? 'Ẩn' : 'Hiện'}
+                  </button>
+                </div>
+              </Field>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="profile-actions-bar">
+            <button
+              type="button"
+              className="button button-outline"
+              onClick={onBack}
+              disabled={saving}
+            >
+              Hủy bỏ
+            </button>
+            <button
+              type="submit"
+              className="button button-primary"
+              disabled={saving}
+              style={{ minWidth: '170px' }}
+            >
+              {saving ? 'Đang cập nhật...' : 'Lưu thông tin'}
+            </button>
+          </div>
+        </div>
+      </form>
+
+      {/* Floating Toast Notification Messages (Bottom-Right) */}
+      <div className="toast-container" aria-live="polite">
+        {error && (
+          <div className="toast-message toast-error" role="alert">
+            <span className="toast-icon">!</span>
+            <div className="toast-content">{error}</div>
+            <button type="button" className="toast-close" onClick={() => setError('')} aria-label="Đóng thông báo">×</button>
+          </div>
+        )}
+        {success && (
+          <div className="toast-message toast-success" role="status">
+            <span className="toast-icon">✓</span>
+            <div className="toast-content">{success}</div>
+            <button type="button" className="toast-close" onClick={() => setSuccess('')} aria-label="Đóng thông báo">×</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+

@@ -21,6 +21,7 @@ class RegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=120)
     password: str = Field(min_length=6, max_length=128)
     display_name: str = Field(min_length=1, max_length=255)
+    email: str = Field(min_length=5, max_length=255)
     phone: str = Field(min_length=6, max_length=30)
     identity_or_tax_number: str | None = Field(default=None, max_length=50)
     address: str | None = Field(default=None, max_length=500)
@@ -64,7 +65,7 @@ class OwnerRead(OwnerCreate, ORMModel):
 
 
 class VehicleCreate(BaseModel):
-    owner_id: int
+    owner_id: int | None = None
     registration_number: str = Field(min_length=1, max_length=30)
     plate_classification: str | None = Field(default=None, max_length=30)
     chassis_number: str = Field(min_length=1, max_length=100)
@@ -74,6 +75,7 @@ class VehicleCreate(BaseModel):
 
 class VehicleRead(VehicleCreate, ORMModel):
     id: int
+    owner_id: int
 
 
 class AppointmentCreate(BaseModel):
@@ -178,3 +180,87 @@ class AccountContext(BaseModel):
     username: str
     role: Role
     owner_id: int | None = None
+
+
+class ProfileResponse(BaseModel):
+    id: int
+    username: str
+    role: Role
+    display_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    avatar_url: str | None = None
+
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: str | None = Field(default=None, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=50)
+    avatar_url: str | None = Field(default=None, max_length=1000000)
+    current_password: str | None = Field(default=None, max_length=128)
+    new_password: str | None = Field(default=None, max_length=128)
+
+
+class AccountListItem(BaseModel):
+    id: int
+    username: str
+    role: Role
+    is_active: bool
+    display_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    avatar_url: str | None = None
+    owner_id: int | None = None
+
+
+class AccountRoleUpdateRequest(BaseModel):
+    role: Role
+
+
+class AccountStatusUpdateRequest(BaseModel):
+    is_active: bool
+
+
+class AccountCreateAdminRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=120)
+    password: str = Field(min_length=6, max_length=128)
+    role: Role
+    display_name: str | None = Field(default=None, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=50)
+
+
+class AccountResetPasswordRequest(BaseModel):
+    new_password: str = Field(min_length=6, max_length=128)
+
+
+class AccountProfileUpdateAdminRequest(BaseModel):
+    display_name: str | None = Field(default=None, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=50)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    email: str
+    username: str | None = None
+    display_name: str | None = None
+    dev_code: str | None = None
+
+
+class ResetPasswordWithOtpRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    otp_code: str = Field(min_length=4, max_length=10)
+    new_password: str = Field(min_length=6, max_length=128)
+
+
+class VerifyOtpOnlyRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    otp_code: str = Field(min_length=4, max_length=10)
+
+
+
