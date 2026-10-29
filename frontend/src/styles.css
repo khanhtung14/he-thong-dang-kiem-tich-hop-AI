@@ -1711,6 +1711,13 @@ tbody tr:hover {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
+.field input:disabled, .field select:disabled, .field textarea:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+  border-color: #e2e8f0;
+}
+
 .field input::placeholder, .field textarea::placeholder {
   color: #94a3b8;
   font-size: 13px;

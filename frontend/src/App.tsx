@@ -466,7 +466,16 @@ function App() {
                   onDelete={id => runAction(() => api.deleteOwner(session.token, id), 'Đã xóa hồ sơ chủ xe thành công.')}
                 />
               )}
-              {page === 'appointments' && <AppointmentsPage role={session.role} vehicles={vehicles} appointments={appointments} onCreate={body => runAction(() => api.createAppointment(session.token, body), 'Đã tạo lịch hẹn.')} onCancel={id => runAction(() => api.cancelAppointment(session.token, id), 'Đã hủy lịch hẹn.')} />}
+              {page === 'appointments' && (
+                <AppointmentsPage
+                  role={session.role}
+                  vehicles={vehicles}
+                  owners={owners}
+                  appointments={appointments}
+                  onCreate={body => runAction(() => api.createAppointment(session.token, body), 'Đã tạo lịch hẹn.')}
+                  onCancel={id => runAction(() => api.cancelAppointment(session.token, id), 'Đã hủy lịch hẹn.')}
+                />
+              )}
               {page === 'inspections' && (
                 <InspectionsPage
                   role={session.role}
@@ -567,6 +576,8 @@ function App() {
       {openGlobalAppointmentModal && (
         <AppointmentModal
           vehicles={vehicles}
+          owners={owners}
+          isOwner={session.role === 'owner'}
           onClose={() => setOpenGlobalAppointmentModal(false)}
           onSubmit={async body => {
             await runAction(() => api.createAppointment(session.token, body), 'Đã tạo lịch hẹn mới.')
@@ -3370,7 +3381,7 @@ function OwnersPage({
   </>
 }
 
-function AppointmentsPage({ role, vehicles, appointments, onCreate, onCancel }: { role: Role; vehicles: Vehicle[]; appointments: Appointment[]; onCreate: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void>; onCancel: (id: number) => Promise<void> }) {
+function AppointmentsPage({ role, vehicles, owners, appointments, onCreate, onCancel }: { role: Role; vehicles: Vehicle[]; owners: Owner[]; appointments: Appointment[]; onCreate: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void>; onCancel: (id: number) => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const canCreate = ['admin', 'intake', 'owner'].includes(role);
@@ -3455,7 +3466,7 @@ function AppointmentsPage({ role, vehicles, appointments, onCreate, onCancel }: 
         <Empty title="Chưa có lịch hẹn" detail="Lịch hẹn mới sẽ hiển thị ở đây."/>
       )}
     </section>
-    {open && <AppointmentModal vehicles={vehicles} onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}
+    {open && <AppointmentModal vehicles={vehicles} owners={owners} isOwner={role === 'owner'} onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}
   </>
 }
 
@@ -3646,7 +3657,7 @@ function formatDate(value: string) { const date = new Date(value); return Number
 function serviceName(value: string) { return ({ periodic: 'Kiểm định định kỳ', new_registration: 'Đăng ký xe mới', information_change: 'Thay đổi thông tin' } as Record<string, string>)[value] ?? value }
 function channelName(value: string) { return ({ counter: 'Tại quầy', postal: 'Bưu chính', online: 'Trực tuyến' } as Record<string, string>)[value] ?? value }
 
-function Modal({ title, subtitle, children, onClose, onSubmit, submitLabel = 'Lưu thông tin', submitVariant = 'primary' }: { title: string; subtitle: string; children: ReactNode; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; submitLabel?: string; submitVariant?: 'primary' | 'danger' }) { const [busy, setBusy] = useState(false); return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}><form className="form-modal" onSubmit={async e => { e.preventDefault(); setBusy(true); try { await onSubmit(e) } finally { setBusy(false) } }}><div className="modal-heading"><div><div className="eyebrow">THÔNG TIN NGHIỆP VỤ</div><h2>{title}</h2><p>{subtitle}</p></div><button type="button" className="close-button" onClick={onClose}>×</button></div><div className="modal-body">{children}</div><div className="modal-footer"><button type="button" className="button button-ghost" onClick={onClose}>Hủy</button><button className={`button ${submitVariant === 'danger' ? 'button-danger' : 'button-primary'}`} style={submitVariant === 'danger' ? { backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#fff' } : undefined} disabled={busy}>{busy ? 'Đang xử lý...' : submitLabel}</button></div></form></div> }
+function Modal({ title, subtitle, children, onClose, onSubmit, submitLabel = 'Lưu thông tin', submitVariant = 'primary', submitDisabled = false }: { title: string; subtitle: string; children: ReactNode; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; submitLabel?: string; submitVariant?: 'primary' | 'danger'; submitDisabled?: boolean }) { const [busy, setBusy] = useState(false); return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}><form className="form-modal" onSubmit={async e => { e.preventDefault(); setBusy(true); try { await onSubmit(e) } finally { setBusy(false) } }}><div className="modal-heading"><div><div className="eyebrow">THÔNG TIN NGHIỆP VỤ</div><h2>{title}</h2><p>{subtitle}</p></div><button type="button" className="close-button" onClick={onClose}>×</button></div><div className="modal-body">{children}</div><div className="modal-footer"><button type="button" className="button button-ghost" onClick={onClose}>Hủy</button><button className={`button ${submitVariant === 'danger' ? 'button-danger' : 'button-primary'}`} style={submitVariant === 'danger' ? { backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#fff' } : undefined} disabled={busy || submitDisabled}>{busy ? 'Đang xử lý...' : submitLabel}</button></div></form></div> }
 function Field({ label, children, required = false }: { label: string; children: ReactNode; required?: boolean }) { return <label className="field"><span>{label}{required && <em> *</em>}</span>{children}</label> }
 
 function OwnerModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (body: Omit<Owner, 'id'>) => Promise<void> }) { const [error, setError] = useState(''); async function submit(e: FormEvent<HTMLFormElement>) { const f = new FormData(e.currentTarget); try { await onSubmit({ display_name: String(f.get('name')), identity_or_tax_number: String(f.get('identity')), phone: String(f.get('phone')), address: String(f.get('address')) }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể lưu chủ xe') } } return <Modal title="Thêm chủ xe" subtitle="Nhập thông tin theo giấy tờ của chủ xe." onClose={onClose} onSubmit={submit}><div className="form-grid"><Field label="Họ tên cá nhân / tên tổ chức" required><input name="name" maxLength={255} required placeholder="Nhập họ tên hoặc tên tổ chức"/></Field><Field label="Số định danh / mã số thuế" required><input name="identity" maxLength={50} required placeholder="Nhập số giấy tờ"/></Field><Field label="Số điện thoại" required><input name="phone" maxLength={30} required placeholder="Số điện thoại liên hệ"/></Field><Field label="Địa chỉ cư trú / trụ sở" required><textarea name="address" required rows={3} placeholder="Theo giấy đăng ký xe"/></Field></div>{error && <div className="form-error">{error}</div>}</Modal> }
@@ -3719,24 +3730,57 @@ function VehicleModal({
 }
 function AppointmentModal({
   vehicles,
+  owners = [],
   onClose,
-  onSubmit
+  onSubmit,
+  isOwner = false,
 }: {
   vehicles: Vehicle[];
+  owners?: Owner[];
   onClose: () => void;
   onSubmit: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void>;
+  isOwner?: boolean;
 }) {
+  const [selectedOwnerId, setSelectedOwnerId] = useState<number | ''>('');
+  const [selectedVehicleId, setSelectedVehicleId] = useState<number | ''>('');
   const [error, setError] = useState('');
+
+  const hasOwnerSelected = isOwner || !!selectedOwnerId;
+
+  const availableVehicles = useMemo(() => {
+    if (isOwner) return vehicles;
+    if (!selectedOwnerId) return [];
+    return vehicles.filter(v => v.owner_id === Number(selectedOwnerId));
+  }, [vehicles, selectedOwnerId, isOwner]);
+
+  // Khi chọn chủ xe, tự động chọn xe nếu chủ xe chỉ có 1 xe duy nhất
+  useEffect(() => {
+    if (hasOwnerSelected) {
+      if (availableVehicles.length === 1) {
+        setSelectedVehicleId(availableVehicles[0].id);
+      } else if (!availableVehicles.some(v => v.id === selectedVehicleId)) {
+        setSelectedVehicleId('');
+      }
+    } else {
+      setSelectedVehicleId('');
+    }
+  }, [hasOwnerSelected, availableVehicles]);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
+
+    if (!isOwner && !selectedOwnerId) {
+      setError('Vui lòng chọn chủ xe trong hệ thống trước.');
+      return;
+    }
+
     const f = new FormData(e.currentTarget);
-    const vehicleId = Number(f.get('vehicle'));
-    const dateVal = String(f.get('date'));
-    const start = String(f.get('start'));
-    const end = String(f.get('end'));
-    const service = String(f.get('service'));
+    const vehicleId = Number(f.get('vehicle')) || Number(selectedVehicleId);
+    const dateVal = String(f.get('date') || '');
+    const start = String(f.get('start') || '06:30');
+    const end = String(f.get('end') || '07:00');
+    const service = String(f.get('service') || 'periodic');
 
     if (!vehicleId) {
       setError('Vui lòng chọn phương tiện để đặt lịch hẹn.');
@@ -3773,31 +3817,74 @@ function AppointmentModal({
   return (
     <Modal
       title="Tạo lịch hẹn"
-      subtitle="Khung giờ phải nằm trọn trong buổi sáng hoặc buổi chiều."
+      subtitle={!isOwner && !selectedOwnerId ? 'Vui lòng chọn chủ xe trước để mở khóa chọn phương tiện và các thông tin khác.' : 'Khung giờ phải nằm trọn trong buổi sáng hoặc buổi chiều.'}
       onClose={onClose}
       onSubmit={submit}
+      submitDisabled={!hasOwnerSelected || !selectedVehicleId}
     >
       <div className="form-grid">
+        {!isOwner && (
+          <Field label="Chủ xe" required>
+            <select
+              name="owner"
+              required
+              value={selectedOwnerId}
+              onChange={e => {
+                const val = e.target.value ? Number(e.target.value) : '';
+                setSelectedOwnerId(val);
+              }}
+            >
+              <option value="">-- Chọn chủ xe trong hệ thống --</option>
+              {owners.map(o => (
+                <option key={o.id} value={o.id}>
+                  {o.display_name} ({o.identity_or_tax_number}) · SĐT: {o.phone}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Phương tiện" required>
-          <select name="vehicle" required defaultValue="">
-            <option value="" disabled>Chọn phương tiện</option>
-            {vehicles.map(v => (
-              <option key={v.id} value={v.id}>{v.registration_number} · {v.vehicle_type}</option>
-            ))}
+          <select
+            name="vehicle"
+            required
+            value={selectedVehicleId}
+            onChange={e => setSelectedVehicleId(e.target.value ? Number(e.target.value) : '')}
+            disabled={!hasOwnerSelected || availableVehicles.length === 0}
+          >
+            {!hasOwnerSelected ? (
+              <option value="">-- Vui lòng chọn chủ xe trước --</option>
+            ) : availableVehicles.length === 0 ? (
+              <option value="">Chủ xe này chưa có phương tiện nào</option>
+            ) : (
+              <>
+                <option value="">-- Chọn phương tiện --</option>
+                {availableVehicles.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.registration_number} · {v.vehicle_type}
+                  </option>
+                ))}
+              </>
+            )}
           </select>
         </Field>
         <Field label="Ngày hẹn" required>
-          <input name="date" type="date" required min={new Date().toISOString().slice(0, 10)}/>
+          <input
+            name="date"
+            type="date"
+            required
+            min={new Date().toISOString().slice(0, 10)}
+            disabled={!hasOwnerSelected}
+          />
         </Field>
         <Field label="Loại dịch vụ" required>
-          <select name="service" required>
+          <select name="service" required disabled={!hasOwnerSelected} defaultValue="periodic">
             <option value="periodic">Kiểm định định kỳ</option>
             <option value="new_registration">Đăng ký xe mới</option>
             <option value="information_change">Thay đổi thông tin</option>
           </select>
         </Field>
         <Field label="Giờ bắt đầu" required>
-          <select name="start" required>
+          <select name="start" required disabled={!hasOwnerSelected} defaultValue="06:30">
             <option value="06:30">06:30</option>
             <option value="07:00">07:00</option>
             <option value="08:00">08:00</option>
@@ -3811,7 +3898,7 @@ function AppointmentModal({
           </select>
         </Field>
         <Field label="Giờ kết thúc" required>
-          <select name="end" required>
+          <select name="end" required disabled={!hasOwnerSelected} defaultValue="07:00">
             <option value="07:00">07:00</option>
             <option value="08:00">08:00</option>
             <option value="09:00">09:00</option>
@@ -3825,6 +3912,16 @@ function AppointmentModal({
           </select>
         </Field>
       </div>
+      {!hasOwnerSelected && !isOwner && (
+        <div style={{ marginTop: '14px', padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', color: '#1d4ed8', fontSize: '13px' }}>
+          💡 <strong>Bước 1:</strong> Vui lòng chọn chủ xe có trong hệ thống để mở khóa chọn phương tiện và các thông tin lịch hẹn.
+        </div>
+      )}
+      {hasOwnerSelected && !isOwner && availableVehicles.length === 0 && (
+        <div style={{ marginTop: '14px', padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', color: '#b45309', fontSize: '13px' }}>
+          ⚠️ Chủ xe được chọn hiện chưa có phương tiện nào trong hệ thống. Vui lòng thêm phương tiện cho chủ xe này trước khi đặt lịch.
+        </div>
+      )}
       {error && <div className="form-error">{error}</div>}
     </Modal>
   );
