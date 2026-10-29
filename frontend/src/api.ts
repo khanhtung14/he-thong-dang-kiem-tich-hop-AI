@@ -245,6 +245,10 @@ export const api = {
   createAppointment: (token: string, body: Omit<Appointment, 'id' | 'code' | 'status'>) => request<Appointment>('/api/v1/appointments', token, { method: 'POST', body: JSON.stringify(body) }),
   cancelAppointment: (token: string, id: number) => request<Appointment>(`/api/v1/appointments/${id}/cancel`, token, { method: 'POST' }),
   inspections: (token: string) => request<Inspection[]>('/api/v1/inspections', token),
+  certificates: (token: string, vehicleId?: number) => {
+    const qs = vehicleId ? `?vehicle_id=${vehicleId}` : ''
+    return request<Certificate[]>(`/api/v1/certificates${qs}`, token)
+  },
   createInspection: (token: string, body: Pick<Inspection, 'vehicle_id' | 'inspection_type' | 'intake_channel' | 'old_certificate_management_number' | 'registration_document_number' | 'insurance_contract_number' | 'insurance_expiry'>) => request<Inspection>('/api/v1/inspections', token, { method: 'POST', body: JSON.stringify(body) }),
   results: (token: string, id: number) => request<InspectionResult[]>(`/api/v1/inspections/${id}/results`, token),
   addResult: (token: string, id: number, body: Omit<InspectionResult, 'id' | 'inspection_id' | 'inspector_account_id' | 'recorded_at'>) => request<InspectionResult>(`/api/v1/inspections/${id}/results`, token, { method: 'POST', body: JSON.stringify(body) }),

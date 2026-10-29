@@ -1375,6 +1375,21 @@ def correct_certificate(certificate_id: int, body: CertificateCreate, db: Sessio
     return certificate
 
 
+@api.get("/certificates", response_model=list[CertificateRead])
+def list_certificates(
+    vehicle_id: int | None = None,
+    db: Session = Depends(get_db),
+    account: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE, Role.INSPECTOR, Role.OWNER)),
+):
+    query = select(Certificate).order_by(Certificate.issued_on.desc())
+    if account.role == Role.OWNER:
+        query = query.join(Vehicle).where(Vehicle.owner_id == account.owner_id)
+    if vehicle_id is not None:
+        ensure_vehicle_access(db, vehicle_id, account)
+        query = query.where(Certificate.vehicle_id == vehicle_id)
+    return db.scalars(query).all()
+
+
 # ---------------------------------------------------------------------------
 # ADMIN SYSTEM ROLE & ACCOUNT MANAGEMENT
 # ---------------------------------------------------------------------------

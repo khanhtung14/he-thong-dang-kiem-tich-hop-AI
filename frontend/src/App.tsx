@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, ApiError, Appointment, AuditLogItem, ChatMessage, Inspection, InspectionResult, isTokenExpired, Owner, Role, Session, UserProfile, Vehicle, AccountListItem, login as apiLogin, register as apiRegister, sendForgotPasswordOtp, verifyOtpOnly, verifyOtpAndResetPassword } from './api'
+import { api, ApiError, Appointment, AuditLogItem, Certificate, ChatMessage, Inspection, InspectionResult, isTokenExpired, Owner, Role, Session, UserProfile, Vehicle, AccountListItem, login as apiLogin, register as apiRegister, sendForgotPasswordOtp, verifyOtpOnly, verifyOtpAndResetPassword } from './api'
 import './support-chat.css'
 
 type Page = 'overview' | 'vehicles' | 'appointments' | 'inspections' | 'owners' | 'roles' | 'audit-logs' | 'inspection-testing' | 'profile'
@@ -95,6 +95,7 @@ function App() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [inspections, setInspections] = useState<Inspection[]>([])
+  const [certificates, setCertificates] = useState<Certificate[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -180,7 +181,8 @@ function App() {
     const jobs: Promise<unknown>[] = [
       api.vehicles(active.token).then(setVehicles),
       api.appointments(active.token).then(setAppointments),
-      api.inspections(active.token).then(setInspections)
+      api.inspections(active.token).then(setInspections),
+      api.certificates(active.token).then(setCertificates)
     ]
     if (canIntake(active.role)) jobs.push(api.owners(active.token).then(setOwners))
     const results = await Promise.allSettled(jobs)
@@ -214,6 +216,7 @@ function App() {
     setVehicles([])
     setAppointments([])
     setInspections([])
+    setCertificates([])
     setActiveInspectionForDetail(null)
     setTestingInspection(null)
     setForbiddenError(null)
@@ -462,6 +465,9 @@ function App() {
               {page === 'owners' && (
                 <OwnersPage
                   owners={owners}
+                  vehicles={vehicles}
+                  inspections={inspections}
+                  certificates={certificates}
                   onCreate={body => runAction(() => api.createOwner(session.token, body), 'Đã tạo hồ sơ chủ xe.')}
                   onDelete={id => runAction(() => api.deleteOwner(session.token, id), 'Đã xóa hồ sơ chủ xe thành công.')}
                 />
@@ -3233,14 +3239,21 @@ function VehiclesPage({
 
 function OwnersPage({
   owners,
+  vehicles = [],
+  inspections = [],
+  certificates = [],
   onCreate,
   onDelete,
 }: {
   owners: Owner[];
+  vehicles?: Vehicle[];
+  inspections?: Inspection[];
+  certificates?: Certificate[];
   onCreate: (body: Omit<Owner, 'id'>) => Promise<void>;
   onDelete?: (id: number) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
+  const [selectedOwnerForDetail, setSelectedOwnerForDetail] = useState<Owner | null>(null);
   const [deletingOwner, setDeletingOwner] = useState<Owner | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [query, setQuery] = useState('');
@@ -3284,7 +3297,7 @@ function OwnersPage({
                   <th>ĐỊNH DANH / MÃ SỐ THUẾ</th>
                   <th>SỐ ĐIỆN THOẠI</th>
                   <th>ĐỊA CHỈ</th>
-                  {onDelete && <th style={{ textAlign: 'right' }}>THAO TÁC</th>}
+                  <th style={{ textAlign: 'right' }}>THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>
@@ -3299,8 +3312,27 @@ function OwnersPage({
                     <td><span className="mono owner-identity-code">{o.identity_or_tax_number}</span></td>
                     <td><span className="owner-phone">{o.phone}</span></td>
                     <td className="address-cell owner-address-cell">{o.address}</td>
-                    {onDelete && (
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button
+                        type="button"
+                        className="button button-ghost button-sm"
+                        style={{
+                          color: '#1d4ed8',
+                          border: '1px solid #bfdbfe',
+                          backgroundColor: '#eff6ff',
+                          padding: '4px 12px',
+                          borderRadius: '6px',
+                          fontSize: '12.5px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          marginRight: onDelete ? '8px' : '0',
+                        }}
+                        onClick={() => setSelectedOwnerForDetail(o)}
+                        title="Xem thông tin chi tiết xe, lịch sử và hạn đăng kiểm của chủ xe"
+                      >
+                        Xem chi tiết
+                      </button>
+                      {onDelete && (
                         <button
                           type="button"
                           className="button button-ghost button-sm"
@@ -3319,8 +3351,8 @@ function OwnersPage({
                         >
                           Xóa
                         </button>
-                      </td>
-                    )}
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -3341,6 +3373,15 @@ function OwnersPage({
       )}
     </section>
     {open && <OwnerModal onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}
+    {selectedOwnerForDetail && (
+      <OwnerDetailModal
+        owner={selectedOwnerForDetail}
+        vehicles={vehicles}
+        inspections={inspections}
+        certificates={certificates}
+        onClose={() => setSelectedOwnerForDetail(null)}
+      />
+    )}
     {deletingOwner && (
       <Modal
         title="Xác nhận xóa chủ xe"
@@ -3379,6 +3420,273 @@ function OwnersPage({
       </Modal>
     )}
   </>
+}
+
+function OwnerDetailModal({
+  owner,
+  vehicles,
+  inspections,
+  certificates,
+  onClose,
+}: {
+  owner: Owner;
+  vehicles: Vehicle[];
+  inspections: Inspection[];
+  certificates: Certificate[];
+  onClose: () => void;
+}) {
+  const ownerVehicles = useMemo(() => vehicles.filter(v => v.owner_id === owner.id), [vehicles, owner.id]);
+  const ownerVehicleIds = useMemo(() => new Set(ownerVehicles.map(v => v.id)), [ownerVehicles]);
+  const totalInspections = useMemo(() => inspections.filter(i => ownerVehicleIds.has(i.vehicle_id)).length, [inspections, ownerVehicleIds]);
+  const totalCertificates = useMemo(() => certificates.filter(c => ownerVehicleIds.has(c.vehicle_id)).length, [certificates, ownerVehicleIds]);
+
+  return (
+    <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div
+        className="form-modal"
+        style={{
+          width: 'min(920px, 95vw)',
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: '#fff',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          boxShadow: '0 25px 60px -15px rgba(15, 23, 42, 0.25)',
+        }}
+      >
+        {/* Modal Header */}
+        <div className="modal-heading" style={{ borderBottom: '1px solid #e2e8f0', padding: '18px 24px', background: '#f8fafc' }}>
+          <div>
+            <div className="eyebrow" style={{ color: '#2563eb', fontWeight: 700, letterSpacing: '0.6px' }}>HỒ SƠ CHI TIẾT CHỦ XE</div>
+            <h2 style={{ margin: '4px 0 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>{owner.display_name}</h2>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+              Mã định danh/MST: <strong style={{ color: '#1e293b' }}>{owner.identity_or_tax_number}</strong> · SĐT: <strong style={{ color: '#1e293b' }}>{owner.phone}</strong>
+            </p>
+          </div>
+          <button type="button" className="close-button" onClick={onClose}>×</button>
+        </div>
+
+        {/* Modal Scrollable Body */}
+        <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Thông tin hành chính của chủ xe */}
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+              <DetailField label="Họ tên / Đơn vị" value={owner.display_name} />
+              <DetailField label="Số định danh / Mã số thuế" value={owner.identity_or_tax_number} />
+              <DetailField label="Số điện thoại liên hệ" value={owner.phone} />
+              <DetailField label="Địa chỉ cư trú / Trụ sở" value={owner.address} />
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed #cbd5e1', fontSize: '13px' }}>
+              <span style={{ color: '#475569' }}>
+                🚗 Tổng số xe: <strong style={{ color: '#0f172a' }}>{ownerVehicles.length} phương tiện</strong>
+              </span>
+              <span style={{ color: '#cbd5e1' }}>•</span>
+              <span style={{ color: '#475569' }}>
+                📋 Lịch sử kiểm định: <strong style={{ color: '#0f172a' }}>{totalInspections} lượt</strong>
+              </span>
+              <span style={{ color: '#cbd5e1' }}>•</span>
+              <span style={{ color: '#475569' }}>
+                📜 Giấy chứng nhận đã cấp: <strong style={{ color: '#0f172a' }}>{totalCertificates} GCN</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* Danh sách xe và chi tiết lịch sử đăng kiểm */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>Danh sách phương tiện sở hữu</span>
+                <span className="badge badge-blue" style={{ fontSize: '12px', padding: '2px 8px' }}>{ownerVehicles.length} xe</span>
+              </h3>
+            </div>
+
+            {ownerVehicles.length === 0 ? (
+              <div className="empty-state" style={{ padding: '30px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '10px' }}>
+                <strong>Chưa có phương tiện nào</strong>
+                <p>Chủ xe này hiện chưa có phương tiện nào được liên kết trong hệ thống.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {ownerVehicles.map((veh, index) => {
+                  const vehInspections = inspections
+                    .filter(i => i.vehicle_id === veh.id)
+                    .sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime());
+                  const vehCerts = certificates
+                    .filter(c => c.vehicle_id === veh.id)
+                    .sort((a, b) => new Date(b.issued_on).getTime() - new Date(a.issued_on).getTime());
+                  const latestCert = vehCerts[0];
+
+                  // Tính trạng thái hạn đăng kiểm
+                  let expiryBadge = (
+                    <span className="badge badge-gray" style={{ fontSize: '12px' }}>
+                      Chưa có GCN kiểm định
+                    </span>
+                  );
+
+                  if (latestCert?.expires_on) {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const exp = new Date(latestCert.expires_on);
+                    exp.setHours(0, 0, 0, 0);
+                    const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+                    if (diffDays < 0) {
+                      expiryBadge = (
+                        <span className="badge badge-red" style={{ fontSize: '12.5px', padding: '4px 10px' }}>
+                          ⚠️ Đã hết hạn ({Math.abs(diffDays)} ngày trước)
+                        </span>
+                      );
+                    } else if (diffDays <= 30) {
+                      expiryBadge = (
+                        <span className="badge badge-amber" style={{ fontSize: '12.5px', padding: '4px 10px' }}>
+                          ⏳ Sắp hết hạn (Còn {diffDays} ngày)
+                        </span>
+                      );
+                    } else {
+                      expiryBadge = (
+                        <span className="badge badge-green" style={{ fontSize: '12.5px', padding: '4px 10px' }}>
+                          ✓ Còn hiệu lực (Hết hạn: {formatDate(latestCert.expires_on)})
+                        </span>
+                      );
+                    }
+                  }
+
+                  return (
+                    <div
+                      key={veh.id}
+                      style={{
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '12px',
+                        overflow: 'hidden',
+                        background: '#ffffff',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+                      }}
+                    >
+                      {/* Vehicle Header Bar */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '10px',
+                          padding: '12px 18px',
+                          background: '#f1f5f9',
+                          borderBottom: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748b' }}>#{index + 1}</span>
+                          <span
+                            style={{
+                              fontFamily: 'monospace',
+                              fontWeight: 700,
+                              fontSize: '15px',
+                              letterSpacing: '0.6px',
+                              background: '#0f172a',
+                              color: '#fff',
+                              padding: '3px 9px',
+                              borderRadius: '6px',
+                            }}
+                          >
+                            {veh.registration_number}
+                          </span>
+                          <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#334155' }}>
+                            {veh.vehicle_type}
+                          </span>
+                          {veh.plate_classification && (
+                            <span style={{ fontSize: '12px', color: '#64748b' }}>
+                              ({veh.plate_classification})
+                            </span>
+                          )}
+                        </div>
+                        <div>{expiryBadge}</div>
+                      </div>
+
+                      {/* Thông số kỹ thuật & Hạn đăng kiểm chi tiết */}
+                      <div style={{ padding: '14px 18px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', fontSize: '13px', marginBottom: '14px' }}>
+                          <div>
+                            <span style={{ color: '#64748b', fontSize: '12px', display: 'block' }}>Số khung (VIN)</span>
+                            <strong style={{ fontFamily: 'monospace', color: '#0f172a' }}>{veh.chassis_number}</strong>
+                          </div>
+                          <div>
+                            <span style={{ color: '#64748b', fontSize: '12px', display: 'block' }}>Số máy</span>
+                            <strong style={{ fontFamily: 'monospace', color: '#0f172a' }}>{veh.engine_number}</strong>
+                          </div>
+                          <div>
+                            <span style={{ color: '#64748b', fontSize: '12px', display: 'block' }}>Hạn kiểm định hiện tại</span>
+                            <strong style={{ color: latestCert?.expires_on ? '#0f172a' : '#94a3b8' }}>
+                              {latestCert?.expires_on ? formatDate(latestCert.expires_on) : 'Chưa có thông tin'}
+                            </strong>
+                          </div>
+                          <div>
+                            <span style={{ color: '#64748b', fontSize: '12px', display: 'block' }}>GCN & Tem gần nhất</span>
+                            <strong style={{ color: latestCert ? '#0f172a' : '#94a3b8' }}>
+                              {latestCert ? `${latestCert.certificate_number} / ${latestCert.stamp_number}` : 'Chưa cấp'}
+                            </strong>
+                          </div>
+                        </div>
+
+                        {/* Bảng lịch sử đăng kiểm của xe */}
+                        <div style={{ marginTop: '10px' }}>
+                          <div style={{ fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>📋 Lịch sử đăng kiểm</span>
+                            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>({vehInspections.length} lần)</span>
+                          </div>
+
+                          {vehInspections.length === 0 ? (
+                            <p style={{ margin: 0, padding: '10px 14px', background: '#f8fafc', borderRadius: '6px', fontSize: '13px', color: '#64748b', fontStyle: 'italic' }}>
+                              Phương tiện này chưa có hồ sơ đăng kiểm nào được ghi nhận.
+                            </p>
+                          ) : (
+                            <div className="table-wrap" style={{ border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                              <table style={{ margin: 0, fontSize: '12.5px' }}>
+                                <thead>
+                                  <tr style={{ background: '#f8fafc' }}>
+                                    <th>MÃ HỒ SƠ</th>
+                                    <th>NGÀY TIẾP NHẬN</th>
+                                    <th>LOẠI KIỂM ĐỊNH</th>
+                                    <th>KÊNH</th>
+                                    <th>HẠN BẢO HIỂM</th>
+                                    <th>TRẠNG THÁI</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {vehInspections.map(ins => (
+                                    <tr key={ins.id}>
+                                      <td><strong className="mono" style={{ color: '#1e40af' }}>{ins.code}</strong></td>
+                                      <td>{formatDate(ins.received_at)}</td>
+                                      <td>{ins.inspection_type === 'first' ? 'Kiểm định lần đầu' : 'Kiểm định định kỳ'}</td>
+                                      <td>{channelName(ins.intake_channel)}</td>
+                                      <td>{ins.insurance_expiry ? formatDate(ins.insurance_expiry) : <span style={{ color: '#94a3b8' }}>—</span>}</td>
+                                      <td><StatusBadge value={ins.status} /></td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Modal Footer */}
+        <div className="modal-footer" style={{ borderTop: '1px solid #e2e8f0', padding: '14px 24px', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end' }}>
+          <button type="button" className="button button-primary" onClick={onClose} style={{ minWidth: '90px' }}>
+            Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function AppointmentsPage({ role, vehicles, owners, appointments, onCreate, onCancel }: { role: Role; vehicles: Vehicle[]; owners: Owner[]; appointments: Appointment[]; onCreate: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void>; onCancel: (id: number) => Promise<void> }) {

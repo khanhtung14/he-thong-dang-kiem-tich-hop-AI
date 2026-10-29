@@ -18,6 +18,7 @@ from app.routers import (
     finalize_inspection,
     issue_certificate,
     list_appointments,
+    list_certificates,
     list_inspections,
     list_vehicles,
     login,
@@ -222,6 +223,11 @@ class WorkflowTests(unittest.TestCase):
             [i.vehicle_id for i in list_inspections(None, self.db, self.owner_account)],
             [self.vehicle_a.id],
         )
+        self.assertEqual(
+            [c.vehicle_id for c in list_certificates(None, self.db, self.owner_account)],
+            [],
+        )
+        self.assertIsInstance(list_certificates(None, self.db, self.admin), list)
 
     def test_owner_cannot_access_another_owners_appointment(self):
         appointment = create_appointment(self.make_appointment(self.vehicle_b.id), self.db, self.admin)
