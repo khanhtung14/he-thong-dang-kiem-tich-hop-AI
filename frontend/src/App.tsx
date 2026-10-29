@@ -1186,25 +1186,6 @@ function TablePagination({
         Hiển thị <strong>{startItem}</strong> - <strong>{endItem}</strong> trên tổng số <strong>{totalItems}</strong> {itemName}
       </div>
       <div className="table-pagination-controls">
-        <button
-          type="button"
-          className="pagination-btn"
-          disabled={currentPage <= 1}
-          onClick={() => onPageChange(1)}
-          title="Trang đầu"
-        >
-          «
-        </button>
-        <button
-          type="button"
-          className="pagination-btn"
-          disabled={currentPage <= 1}
-          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-          title="Trang trước"
-        >
-          ‹ Trước
-        </button>
-
         {pages.map((p, idx) =>
           p === '...' ? (
             <span key={`ellipsis-${idx}`} className="pagination-ellipsis">…</span>
@@ -1219,25 +1200,6 @@ function TablePagination({
             </button>
           )
         )}
-
-        <button
-          type="button"
-          className="pagination-btn"
-          disabled={currentPage >= totalPages}
-          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
-          title="Trang sau"
-        >
-          Sau ›
-        </button>
-        <button
-          type="button"
-          className="pagination-btn"
-          disabled={currentPage >= totalPages}
-          onClick={() => onPageChange(totalPages)}
-          title="Trang cuối"
-        >
-          »
-        </button>
       </div>
     </div>
   )
