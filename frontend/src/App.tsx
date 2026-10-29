@@ -835,24 +835,6 @@ function InspectionTestingPage({
         </button>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <StatusBadge value={inspection.status} />
-          {canInspect(role) && !isFinalized && results.length > 0 && (
-            <button
-              className="button button-primary"
-              disabled={busy || !allStagesCompleted}
-              onClick={handleFinalizeChecklist}
-              title={
-                !allStagesCompleted
-                  ? `Chưa hoàn thành đủ 5 công đoạn (${completedStagesCount}/5 - Còn thiếu: ${missingStages.map(s => stageTitles[s]).join(', ')})`
-                  : 'Chốt checklist hoàn tất kiểm định'
-              }
-              style={{
-                opacity: allStagesCompleted ? 1 : 0.6,
-                cursor: allStagesCompleted ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {busy ? 'Đang chốt...' : 'Chốt checklist hoàn tất'}
-            </button>
-          )}
           {inspection.status === 'passed' && (
             <button className="button button-primary" onClick={() => {
               if (!showCertForm) {
@@ -1217,7 +1199,7 @@ function InspectionTestingPage({
           )}
 
           {/* Finalize Checklist Action Card (Only if not finalized) */}
-          {!isFinalized && results.length > 0 && (
+          {!isFinalized && results.length > 0 && canInspect(role) && (
             <div className="finalize-action-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
                 <h4 style={{ margin: 0 }}>Hoàn tất quy trình kiểm tra 5 công đoạn</h4>
