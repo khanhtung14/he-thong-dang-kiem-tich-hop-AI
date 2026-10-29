@@ -4505,11 +4505,7 @@ function AuditLogsPage({ session }: { session: Session }) {
     <>
       <div className="section-head">
         <div>
-          <span className="section-sub">QUẢN TRỊ HỆ THỐNG</span>
           <h2>Nhật ký thao tác hệ thống</h2>
-          <p style={{ color: '#64748b', fontSize: '14px', marginTop: '4px' }}>
-            Theo dõi, tra cứu và kiểm toán toàn bộ lịch sử thao tác của tất cả vai trò trên hệ thống.
-          </p>
         </div>
         <div className="section-actions">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
