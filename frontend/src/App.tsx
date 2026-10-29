@@ -2857,6 +2857,7 @@ function VehiclesPage({
 }) {
   const [query, setQuery] = useState(''); const [open, setOpen] = useState(false)
   const [deletingVehicle, setDeletingVehicle] = useState<Vehicle | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const isOwner = role === 'owner'
   const filtered = vehicles.filter(v => `${v.registration_number} ${v.chassis_number} ${v.engine_number} ${v.vehicle_type}`.toLowerCase().includes(query.toLowerCase()))
 
@@ -2968,12 +2969,20 @@ function VehiclesPage({
       <Modal
         title="Xác nhận xóa phương tiện"
         subtitle={`Thao tác xóa phương tiện biển số "${deletingVehicle.registration_number}".`}
-        onClose={() => setDeletingVehicle(null)}
-        onSubmit={async () => {
-          if (onDelete) {
-            await onDelete(deletingVehicle.id);
-          }
+        onClose={() => {
           setDeletingVehicle(null);
+          setDeleteError('');
+        }}
+        onSubmit={async () => {
+          setDeleteError('');
+          try {
+            if (onDelete) {
+              await onDelete(deletingVehicle.id);
+            }
+            setDeletingVehicle(null);
+          } catch (err: any) {
+            setDeleteError(err?.message || 'Không thể xóa phương tiện này.');
+          }
         }}
         submitLabel="Xác nhận xóa"
         submitVariant="danger"
@@ -2985,6 +2994,11 @@ function VehiclesPage({
               Lưu ý: Chỉ có thể xóa nếu phương tiện chưa có hồ sơ kiểm định và không có lịch hẹn đang có hiệu lực.
             </div>
           </div>
+          {deleteError && (
+            <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #f87171', borderRadius: '6px', color: '#b91c1c', fontSize: '13.5px', fontWeight: 500 }}>
+              {deleteError}
+            </div>
+          )}
         </div>
       </Modal>
     )}
@@ -3002,6 +3016,7 @@ function OwnersPage({
 }) {
   const [open, setOpen] = useState(false);
   const [deletingOwner, setDeletingOwner] = useState<Owner | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const [query, setQuery] = useState('');
   const filtered = owners.filter(o => `${o.display_name} ${o.phone} ${o.identity_or_tax_number}`.toLowerCase().includes(query.toLowerCase()));
 
@@ -3104,12 +3119,20 @@ function OwnersPage({
       <Modal
         title="Xác nhận xóa chủ xe"
         subtitle={`Thao tác xóa hồ sơ chủ xe "${deletingOwner.display_name}".`}
-        onClose={() => setDeletingOwner(null)}
-        onSubmit={async () => {
-          if (onDelete) {
-            await onDelete(deletingOwner.id);
-          }
+        onClose={() => {
           setDeletingOwner(null);
+          setDeleteError('');
+        }}
+        onSubmit={async () => {
+          setDeleteError('');
+          try {
+            if (onDelete) {
+              await onDelete(deletingOwner.id);
+            }
+            setDeletingOwner(null);
+          } catch (err: any) {
+            setDeleteError(err?.message || 'Không thể xóa chủ xe này.');
+          }
         }}
         submitLabel="Xác nhận xóa"
         submitVariant="danger"
@@ -3121,6 +3144,11 @@ function OwnersPage({
               Lưu ý: Chỉ có thể xóa nếu chủ xe này chưa có phương tiện liên kết và không gắn với tài khoản đăng nhập.
             </div>
           </div>
+          {deleteError && (
+            <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #f87171', borderRadius: '6px', color: '#b91c1c', fontSize: '13.5px', fontWeight: 500 }}>
+              {deleteError}
+            </div>
+          )}
         </div>
       </Modal>
     )}
