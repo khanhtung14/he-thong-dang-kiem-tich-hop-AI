@@ -310,7 +310,16 @@ function App() {
               <strong>{(session.display_name || session.username).replace(/\s*\(DỮ LIỆU MẪU\)/gi, '')}</strong>
               <span
                 className={`role-badge-pill role-badge-${session.role}`}
-                style={{ width: 'fit-content', maxWidth: 'fit-content', alignSelf: 'flex-start', display: 'inline-flex' }}
+                style={{
+                  width: 'fit-content',
+                  maxWidth: 'fit-content',
+                  alignSelf: 'flex-start',
+                  display: 'inline-flex',
+                  fontSize: '9.5px',
+                  padding: '1.5px 6px',
+                  letterSpacing: '0px',
+                  lineHeight: '1.25',
+                }}
               >
                 {roleName[session.role]}
               </span>
