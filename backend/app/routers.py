@@ -1046,7 +1046,7 @@ def create_owner(body: OwnerCreate, db: Session = Depends(get_db), account: Acco
         entity_type="owner",
         entity_id=owner.id,
         action="create_owner",
-        after_value=f"Thêm thông tin chủ xe {owner.display_name} ({owner.identifier})",
+        after_value=f"Thêm thông tin chủ xe {owner.display_name}",
     )
     db.commit()
     return owner
@@ -1077,6 +1077,15 @@ def create_vehicle(body: VehicleCreate, db: Session = Depends(get_db), account: 
     db.add(vehicle)
     db.commit()
     db.refresh(vehicle)
+    log_audit_event(
+        db,
+        account.id,
+        entity_type="vehicle",
+        entity_id=vehicle.id,
+        action="create_vehicle",
+        after_value=f"Đăng ký phương tiện {vehicle.registration_number}",
+    )
+    db.commit()
     return vehicle
 
 
