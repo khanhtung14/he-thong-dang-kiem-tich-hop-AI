@@ -1365,6 +1365,14 @@ def finalize_inspection(inspection_id: int, body: FinalizeInspectionRequest, db:
     results = db.scalars(select(InspectionItem).where(InspectionItem.inspection_id == inspection_id)).all()
     if not results:
         raise HTTPException(422, "Cần có ít nhất một kết quả kiểm tra hạng mục kiểm định để kết luận.")
+    recorded_stages = {item.stage for item in results}
+    missing_stages = [s for s in (1, 2, 3, 4, 5) if s not in recorded_stages]
+    if missing_stages:
+        missing_str = ", ".join(f"Công đoạn {s}" for s in missing_stages)
+        raise HTTPException(
+            422,
+            f"Quy trình kiểm định bắt buộc phải hoàn thành đánh giá đủ 5 công đoạn. Còn thiếu: {missing_str}."
+        )
     inspection.status = InspectionStatus.FAILED if any(item.result in (ItemResult.MAJOR, ItemResult.DANGEROUS) for item in results) else InspectionStatus.PASSED
     db.commit()
     db.refresh(inspection)

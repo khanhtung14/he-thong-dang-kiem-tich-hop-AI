@@ -730,6 +730,18 @@ function InspectionTestingPage({
   const majorCount = results.filter(r => r.result === 'ma').length
   const dangerousCount = results.filter(r => r.result === 'dd').length
 
+  const stageTitles: Record<number, string> = {
+    1: 'Công đoạn 1 (Tổng quát)',
+    2: 'Công đoạn 2 (Thân vỏ)',
+    3: 'Công đoạn 3 (Phanh/Trượt)',
+    4: 'Công đoạn 4 (Môi trường)',
+    5: 'Công đoạn 5 (Gầm/Lái)',
+  }
+  const recordedStages = useMemo(() => new Set(results.map(r => r.stage)), [results])
+  const completedStagesCount = [1, 2, 3, 4, 5].filter(s => recordedStages.has(s)).length
+  const allStagesCompleted = completedStagesCount === 5
+  const missingStages = [1, 2, 3, 4, 5].filter(s => !recordedStages.has(s))
+
   function selectPreset(preset: { code: string; defaultUnit?: string }) {
     setItemCode(preset.code)
     if (preset.defaultUnit) setUnit(preset.defaultUnit)
@@ -763,8 +775,8 @@ function InspectionTestingPage({
   }
 
   async function handleFinalizeChecklist() {
-    if (results.length === 0) {
-      setError('Cần ít nhất một kết quả hạng mục trước khi chốt checklist.')
+    if (!allStagesCompleted) {
+      setError(`Quy trình kiểm định bắt buộc phải hoàn thành đánh giá đủ 5 công đoạn. Còn thiếu: ${missingStages.map(s => stageTitles[s]).join(', ')}.`)
       return
     }
     setBusy(true); setError('')
@@ -824,7 +836,20 @@ function InspectionTestingPage({
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <StatusBadge value={inspection.status} />
           {canInspect(role) && !isFinalized && results.length > 0 && (
-            <button className="button button-primary" disabled={busy} onClick={handleFinalizeChecklist}>
+            <button
+              className="button button-primary"
+              disabled={busy || !allStagesCompleted}
+              onClick={handleFinalizeChecklist}
+              title={
+                !allStagesCompleted
+                  ? `Chưa hoàn thành đủ 5 công đoạn (${completedStagesCount}/5 - Còn thiếu: ${missingStages.map(s => stageTitles[s]).join(', ')})`
+                  : 'Chốt checklist hoàn tất kiểm định'
+              }
+              style={{
+                opacity: allStagesCompleted ? 1 : 0.6,
+                cursor: allStagesCompleted ? 'pointer' : 'not-allowed',
+              }}
+            >
               {busy ? 'Đang chốt...' : 'Chốt checklist hoàn tất'}
             </button>
           )}
@@ -900,17 +925,34 @@ function InspectionTestingPage({
 
           {/* Stage Selection Tabs */}
           <div className="stage-tabs-row">
-            {[1, 2, 3, 4, 5].map(s => (
-              <button
-                key={s}
-                type="button"
-                className={`stage-tab-btn ${stage === s ? 'active' : ''}`}
-                onClick={() => setStage(s)}
-              >
-                <span className="stage-tab-num">{s}</span>
-                {s === 1 ? '1·Tổng quát' : s === 2 ? '2·Thân vỏ' : s === 3 ? '3·Phanh/Trượt' : s === 4 ? '4·Môi trường' : '5·Gầm/Lái'}
-              </button>
-            ))}
+            {[1, 2, 3, 4, 5].map(s => {
+              const isRecorded = recordedStages.has(s)
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  className={`stage-tab-btn ${stage === s ? 'active' : ''}`}
+                  onClick={() => setStage(s)}
+                  style={{ position: 'relative' }}
+                >
+                  <span className="stage-tab-num">{s}</span>
+                  {s === 1 ? '1·Tổng quát' : s === 2 ? '2·Thân vỏ' : s === 3 ? '3·Phanh/Trượt' : s === 4 ? '4·Môi trường' : '5·Gầm/Lái'}
+                  {isRecorded && (
+                    <span
+                      title="Công đoạn này đã có kết quả đánh giá"
+                      style={{
+                        marginLeft: 4,
+                        color: stage === s ? '#ffffff' : '#10b981',
+                        fontWeight: 800,
+                        fontSize: 12,
+                      }}
+                    >
+                      ✓
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
 
           {/* Preset Item Chips for the chosen stage */}
@@ -1177,14 +1219,50 @@ function InspectionTestingPage({
           {/* Finalize Checklist Action Card (Only if not finalized) */}
           {!isFinalized && results.length > 0 && (
             <div className="finalize-action-card">
-              <h4>Hoàn tất quy trình kiểm tra 5 công đoạn</h4>
-              <p>Sau khi hoàn tất toàn bộ checklist, kiểm định viên chốt hồ sơ để hệ thống tự động tổng hợp kết luận ĐẠT hoặc KHÔNG ĐẠT theo quy định.</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+                <h4 style={{ margin: 0 }}>Hoàn tất quy trình kiểm tra 5 công đoạn</h4>
+                <span
+                  style={{
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    padding: '2.5px 8px',
+                    borderRadius: '20px',
+                    background: allStagesCompleted ? '#ecfdf5' : '#fef3c7',
+                    color: allStagesCompleted ? '#065f46' : '#92400e',
+                    border: `1px solid ${allStagesCompleted ? '#a7f3d0' : '#fde68a'}`,
+                  }}
+                >
+                  {allStagesCompleted ? '✓ Đã đủ 5/5 công đoạn' : `Tiến độ: ${completedStagesCount}/5 công đoạn`}
+                </span>
+              </div>
+
+              {!allStagesCompleted ? (
+                <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: 8, padding: '9px 12px', marginBottom: 12, fontSize: '12px', color: '#92400e', lineHeight: 1.45 }}>
+                  ⚠️ <strong>Chưa đủ 5 công đoạn:</strong> Cần đánh giá đủ cả 5 công đoạn kỹ thuật mới có thể chốt kết quả kiểm định.
+                  <br />
+                  Còn thiếu: <strong>{missingStages.map(s => stageTitles[s]).join(', ')}</strong>.
+                </div>
+              ) : (
+                <p style={{ margin: '0 0 12px', fontSize: '12.5px', color: '#475569' }}>
+                  Đã hoàn tất đánh giá đủ 5 công đoạn kỹ thuật. Kiểm định viên chốt hồ sơ để hệ thống tự động tổng hợp kết luận ĐẠT hoặc KHÔNG ĐẠT theo quy định.
+                </p>
+              )}
+
               <button
                 className="button button-primary"
-                disabled={busy}
+                disabled={busy || !allStagesCompleted}
                 onClick={handleFinalizeChecklist}
+                style={{
+                  width: '100%',
+                  opacity: allStagesCompleted ? 1 : 0.6,
+                  cursor: allStagesCompleted ? 'pointer' : 'not-allowed',
+                }}
               >
-                {busy ? 'Đang tổng hợp...' : 'Chốt checklist hoàn tất kiểm định'}
+                {busy
+                  ? 'Đang tổng hợp...'
+                  : allStagesCompleted
+                  ? 'Chốt checklist hoàn tất kiểm định'
+                  : `Cần đánh giá đủ 5 công đoạn (${completedStagesCount}/5)`}
               </button>
             </div>
           )}

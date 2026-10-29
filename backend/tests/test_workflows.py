@@ -149,13 +149,22 @@ class WorkflowTests(unittest.TestCase):
             self.intake,
         )
 
-    def add_result(self, inspection, result="dat", item_code="BRAKE-01"):
+    def add_result(self, inspection, result="dat", item_code="BRAKE-01", stage=3):
         return record_result(
             inspection.id,
-            ItemResultCreate(stage=3, item_code=item_code, result=result),
+            ItemResultCreate(stage=stage, item_code=item_code, result=result),
             self.db,
             self.inspector,
         )
+
+    def add_all_stages(self, inspection, result="dat"):
+        for s in (1, 2, 3, 4, 5):
+            record_result(
+                inspection.id,
+                ItemResultCreate(stage=s, item_code=f"ITEM-{s}", result=result),
+                self.db,
+                self.inspector,
+            )
 
     def finalize(self, inspection, complete=True):
         return finalize_inspection(
@@ -264,7 +273,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_inspector_result_controls_final_status_and_intake_cannot_finalize(self):
         inspection = self.make_inspection()
-        self.add_result(inspection, "mi")
+        self.add_all_stages(inspection, "mi")
         self.assertEqual(inspection.status, InspectionStatus.IN_PROGRESS)
         self.assertEqual(self.finalize(inspection).status, InspectionStatus.PASSED)
 
@@ -280,10 +289,17 @@ class WorkflowTests(unittest.TestCase):
         inspection = self.make_inspection()
         self.assert_http_error(422, lambda: self.finalize(inspection, complete=False))
         self.assert_http_error(422, lambda: self.finalize(inspection, complete=True))
+        # Adding only 1 stage still raises 422 because all 5 stages are required
+        self.add_result(inspection, "dat", stage=1)
+        self.assert_http_error(422, lambda: self.finalize(inspection, complete=True))
+        # Add remaining stages 2, 3, 4, 5 -> now succeeds
+        for s in (2, 3, 4, 5):
+            self.add_result(inspection, "dat", stage=s)
+        self.assertEqual(self.finalize(inspection, complete=True).status, InspectionStatus.PASSED)
 
     def test_certificate_requires_passed_inspection_payment_and_legal_clearance(self):
         inspection = self.make_inspection()
-        self.add_result(inspection)
+        self.add_all_stages(inspection)
         self.finalize(inspection)
 
         self.assert_http_error(
@@ -320,7 +336,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_certificate_correction_writes_audit_and_is_admin_only(self):
         inspection = self.make_inspection()
-        self.add_result(inspection)
+        self.add_all_stages(inspection)
         self.finalize(inspection)
         certificate = issue_certificate(
             inspection.id, self.make_certificate(), self.db, self.admin
