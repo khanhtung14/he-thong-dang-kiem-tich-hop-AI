@@ -3917,17 +3917,17 @@ function InspectionsPage({
                   return (
                     <tr key={i.id}>
                       <td><strong className="mono inspection-code">{i.code}</strong></td>
-                      <td><span className="plate plate-large">{veh ? veh.registration_number : vehicleLabel(vehicles, i.vehicle_id)}</span></td>
+                      <td><span className="plate">{veh ? veh.registration_number : vehicleLabel(vehicles, i.vehicle_id)}</span></td>
                       <td className="vehicle-owner-cell">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} title={owner?.display_name}>
                           <span
                             style={{
-                              width: '26px',
-                              height: '26px',
+                              width: '22px',
+                              height: '22px',
                               borderRadius: '50%',
                               backgroundColor: '#e0e7ff',
                               color: '#3730a3',
-                              fontSize: '11px',
+                              fontSize: '10px',
                               fontWeight: 700,
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -3937,7 +3937,7 @@ function InspectionsPage({
                           >
                             {owner?.display_name ? owner.display_name.slice(0, 1).toUpperCase() : '?'}
                           </span>
-                          <strong style={{ color: '#0f172a', fontSize: '13.5px' }}>
+                          <strong style={{ color: '#0f172a', fontSize: '13px', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
                             {owner?.display_name ?? '—'}
                           </strong>
                         </div>
@@ -3946,7 +3946,7 @@ function InspectionsPage({
                       <td className="inspection-channel-cell">{channelName(i.intake_channel)}</td>
                       <td className="inspection-date-cell">{formatDate(i.received_at)}</td>
                       <td><StatusBadge value={i.status}/></td>
-                      <td>
+                      <td style={{ textAlign: 'right' }}>
                         <button className="button button-outline button-sm detail-action-btn" onClick={() => handleSelect(i)}>
                           {role === 'inspector' ? 'Vào đo kiểm →' : 'Chi tiết →'}
                         </button>
