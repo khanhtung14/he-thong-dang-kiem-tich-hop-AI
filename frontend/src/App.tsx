@@ -98,7 +98,6 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [supportChatOpen, setSupportChatOpen] = useState(false)
 
   // Auto-dismiss floating toast notifications
   useEffect(() => {
@@ -339,15 +338,6 @@ function App() {
             <strong>{current}</strong>
           </div>
           <div className="top-actions">
-            <button
-              type="button"
-              className="topbar-ai-btn"
-              onClick={() => setSupportChatOpen(v => !v)}
-              title="Mở Trợ lý ảo AI đăng kiểm"
-            >
-              <span className="topbar-ai-sparkle">✨</span>
-              <span>Trợ lý AI</span>
-            </button>
             <div className="live-state"><i/> Hệ thống hoạt động</div>
             <div className="top-date">{new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(new Date())}</div>
             <button className="icon-button" title="Làm mới dữ liệu" onClick={() => void load(session)}>↻</button>
@@ -490,13 +480,7 @@ function App() {
         </div>
       </main>
 
-      <SupportChat
-        session={session}
-        onSignOut={signOut}
-        isOpen={supportChatOpen}
-        onToggle={() => setSupportChatOpen(v => !v)}
-        onClose={() => setSupportChatOpen(false)}
-      />
+      <SupportChat session={session} onSignOut={signOut} />
 
       {/* Floating Toast Notification Messages (Bottom-Right) */}
       <div className="toast-container" aria-live="polite">
