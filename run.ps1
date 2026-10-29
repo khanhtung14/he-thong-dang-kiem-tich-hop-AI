@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $pythonExe = Join-Path $projectRoot 'backend\.venv\Scripts\python.exe'
 $npmCommand = (Get-Command npm.cmd -ErrorAction Stop).Source
@@ -18,13 +18,13 @@ $cancelHandler = [ConsoleCancelEventHandler]{
 }
 
 if (-not (Test-Path -LiteralPath $pythonExe)) {
-    throw 'Chưa có backend\.venv. Tạo môi trường ảo và cài backend\requirements.txt trước.'
+    throw "Chua co backend\.venv. Hay tao moi truong ao va cai dat backend\requirements.txt truoc."
 }
 if (-not (Test-Path -LiteralPath $frontendDependencies)) {
-    throw 'Chưa có frontend\node_modules. Chạy npm install trong thư mục frontend trước.'
+    throw "Chua co frontend\node_modules. Hay chay 'npm install' trong thu muc frontend truoc."
 }
 if (-not (Test-Path -LiteralPath (Join-Path $backendDirectory '.env'))) {
-    Write-Warning 'Chưa có backend\.env. Sao chép backend\.env.example thành backend\.env và cấu hình JWT_SECRET trước khi đăng nhập.'
+    Write-Warning "Chua co backend\.env. Hay sao chep backend\.env.example thanh backend\.env truoc khi chay."
 }
 
 foreach ($port in @(8000, 5173)) {
@@ -41,11 +41,11 @@ foreach ($port in @(8000, 5173)) {
             } else {
                 $response.StatusCode -eq 200 -and $response.Content -match '/@vite/client'
             }
-            if (-not $isExpectedService) { throw 'Phản hồi không khớp với dịch vụ của dự án.' }
+            if (-not $isExpectedService) { throw "Phan hoi khong khop voi dich vu cua du an." }
             if ($port -eq 8000) { $backendAlreadyRunning = $true } else { $frontendAlreadyRunning = $true }
         }
         catch {
-            throw "Cổng $port đang được chương trình khác sử dụng và dịch vụ không khớp dự án. Hãy dừng tiến trình đó rồi chạy lại .\run.ps1."
+            throw "Cong $port dang duoc chuong trinh khac su dung va dich vu khong khop du an. Hay dung tien trinh do roi chay lai .\run.ps1."
         }
     }
     finally {
@@ -70,32 +70,36 @@ try {
         Start-Sleep -Seconds 1
         if ($null -ne $backendProcess) {
             $backendProcess.Refresh()
-            if ($backendProcess.HasExited) { throw 'Backend không khởi động được. Xem .run-logs\backend-error.log.' }
+            if ($backendProcess.HasExited) { throw "Backend khong khoi dong duoc. Xem .run-logs\backend-error.log." }
             $backendOutput = (Get-Content (Join-Path $logDirectory 'backend.log'), (Join-Path $logDirectory 'backend-error.log') -Raw -ErrorAction SilentlyContinue) -join "`n"
             $backendReady = $backendOutput.Contains('Application startup complete')
         }
         if ($null -ne $frontendProcess) {
             $frontendProcess.Refresh()
-            if ($frontendProcess.HasExited) { throw 'Frontend không khởi động được. Xem .run-logs\frontend-error.log.' }
+            if ($frontendProcess.HasExited) { throw "Frontend khong khoi dong duoc. Xem .run-logs\frontend-error.log." }
             $frontendOutput = (Get-Content (Join-Path $logDirectory 'frontend.log'), (Join-Path $logDirectory 'frontend-error.log') -Raw -ErrorAction SilentlyContinue) -join "`n"
             $frontendReady = $frontendOutput.Contains('ready in') -or ($frontendOutput -match '127\.0\.0\.1' -and $frontendOutput -match '5173')
         }
     }
-    if (-not ($backendReady -and $frontendReady)) { throw 'Hết thời gian chờ khởi động. Xem nhật ký trong .run-logs.' }
+    if (-not ($backendReady -and $frontendReady)) { throw "Het thoi gian cho khoi dong. Xem nhat ky trong .run-logs." }
 
-    Write-Host 'Đang chạy dự án:' -ForegroundColor Green
-    Write-Host '  Giao diện: http://localhost:5173'
-    Write-Host '  Backend:   http://localhost:8000'
-    Write-Host '  API docs:  http://localhost:8000/docs'
-    if ($backendAlreadyRunning) { Write-Host '  Backend hiện có đang chạy; script sẽ không dừng tiến trình đó.' }
-    if ($frontendAlreadyRunning) { Write-Host '  Frontend hiện có đang chạy; script sẽ không dừng tiến trình đó.' }
-    Write-Host "  Nhật ký:   $logDirectory"
-    Write-Host 'Nhấn Ctrl+C để dừng các dịch vụ do lệnh này khởi chạy.'
+    Write-Host "==========================================================" -ForegroundColor Cyan
+    Write-Host "   HE THONG DANG KIEM PHUONG TIEN XE CO GIOI (AI ASSIST)" -ForegroundColor Cyan
+    Write-Host "==========================================================" -ForegroundColor Cyan
+    Write-Host "  [+] Giao dien web:  http://localhost:5173" -ForegroundColor Green
+    Write-Host "  [+] Backend API:    http://localhost:8000" -ForegroundColor Green
+    Write-Host "  [+] API Docs:       http://localhost:8000/docs" -ForegroundColor Green
+    if ($backendAlreadyRunning) { Write-Host "  [*] Backend hien da dang chay truoc do." -ForegroundColor Yellow }
+    if ($frontendAlreadyRunning) { Write-Host "  [*] Frontend hien da dang chay truoc do." -ForegroundColor Yellow }
+    Write-Host "  [*] Nhat ky (logs): $logDirectory" -ForegroundColor Gray
+    Write-Host "----------------------------------------------------------" -ForegroundColor Cyan
+    Write-Host "  >> Nhan Ctrl+C de dung toan bo he thong. <<" -ForegroundColor Yellow
+    Write-Host "==========================================================" -ForegroundColor Cyan
 
     while (-not $script:stopRequested) {
         Start-Sleep -Seconds 1
-        if ($null -ne $backendProcess) { $backendProcess.Refresh(); if ($backendProcess.HasExited) { throw "Backend đã dừng (mã $($backendProcess.ExitCode)). Xem .run-logs\backend-error.log." } }
-        if ($null -ne $frontendProcess) { $frontendProcess.Refresh(); if ($frontendProcess.HasExited) { throw "Frontend đã dừng (mã $($frontendProcess.ExitCode)). Xem .run-logs\frontend-error.log." } }
+        if ($null -ne $backendProcess) { $backendProcess.Refresh(); if ($backendProcess.HasExited) { throw "Backend da dung (ma $($backendProcess.ExitCode)). Xem .run-logs\backend-error.log." } }
+        if ($null -ne $frontendProcess) { $frontendProcess.Refresh(); if ($frontendProcess.HasExited) { throw "Frontend da dung (ma $($frontendProcess.ExitCode)). Xem .run-logs\frontend-error.log." } }
     }
 }
 finally {
@@ -105,5 +109,5 @@ finally {
             & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
         }
     }
-    Write-Host 'Đã dừng các dịch vụ của dự án.'
+    Write-Host "Da dung toan bo cac dich vu cua he thong." -ForegroundColor Green
 }
