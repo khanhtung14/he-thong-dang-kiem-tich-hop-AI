@@ -3809,9 +3809,9 @@ function SystemRolesPage({ session }: { session: Session }) {
             </div>
 
             <select
+              className="filter-select"
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value as any)}
-              style={{ height: '38px', padding: '0 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
             >
               <option value="all">Tất cả trạng thái</option>
               <option value="active">Đang hoạt động</option>
