@@ -3498,6 +3498,25 @@ function SystemRolesPage({ session }: { session: Session }) {
     return textMatch && statusMatch
   })
 
+  // Pagination: 10 items per page
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [query, statusFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [currentPage, totalPages]);
+
   const hasOtherAdmin = accounts.some(a => a.role === 'admin' && (!roleModalAccount || a.id !== roleModalAccount.id))
   const hasAnyAdmin = accounts.some(a => a.role === 'admin')
 
@@ -3702,7 +3721,8 @@ function SystemRolesPage({ session }: { session: Session }) {
             </div>
           </div>
         ) : filtered.length ? (
-          <div className="table-wrap">
+          <>
+            <div className="table-wrap">
             <table>
               <thead>
                 <tr>
@@ -3714,7 +3734,7 @@ function SystemRolesPage({ session }: { session: Session }) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(acc => (
+                {paginated.map(acc => (
                   <tr key={acc.id}>
                     <td>
                       <div className="account-cell-user">
@@ -3841,6 +3861,16 @@ function SystemRolesPage({ session }: { session: Session }) {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          <TablePagination
+            currentPage={currentPage}
+            totalItems={filtered.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            itemName="tài khoản"
+          />
+        </>
         ) : (
           <Empty
             title="Không tìm thấy tài khoản phù hợp"
