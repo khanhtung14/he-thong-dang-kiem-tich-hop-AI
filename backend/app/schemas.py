@@ -90,6 +90,7 @@ class AppointmentRead(AppointmentCreate, ORMModel):
     id: int
     code: str
     status: AppointmentStatus
+    center: str | None = None
 
 
 OLD_CERT_REGEX = re.compile(r"^[A-Z0-9\-/]{6,30}$")

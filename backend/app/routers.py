@@ -1095,15 +1095,48 @@ def create_appointment(body: AppointmentCreate, db: Session = Depends(get_db), a
                (time(13, 0) <= body.start_time < body.end_time <= time(17, 30)))
     if not allowed:
         raise HTTPException(422, "Khung giờ hẹn phải nằm trọn trong ca sáng (06:30 - 11:00) hoặc ca chiều (13:00 - 17:30).")
+
+    # Kiểm tra chủ động: Xe có đang có lịch hẹn hiệu lực (ACTIVE) hay không
+    existing_active = db.scalar(
+        select(Appointment).where(
+            Appointment.vehicle_id == body.vehicle_id,
+            Appointment.status == AppointmentStatus.ACTIVE,
+        )
+    )
+    if existing_active:
+        raise HTTPException(
+            409,
+            "Phương tiện này hiện đã có một lịch hẹn đang hiệu lực. Vui lòng hoàn tất hoặc hủy lịch hẹn cũ trước khi đặt lịch mới.",
+        )
+
     code = f"APT-{uuid4().hex[:12].upper()}"
-    appointment = Appointment(**body.model_dump(), code=code, status=AppointmentStatus.ACTIVE, active_guard=1)
+    appointment = Appointment(
+        **body.model_dump(),
+        code=code,
+        status=AppointmentStatus.ACTIVE,
+        active_guard=1,
+        center="Trung tâm Đăng kiểm Mẫu",
+    )
     db.add(appointment)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Phương tiện này hiện đã có một lịch hẹn đang hiệu lực. Vui lòng hoàn tất hoặc hủy lịch hẹn cũ trước khi đặt lịch mới.")
+        logging.error("Lỗi IntegrityError khi tạo lịch hẹn: %s", exc)
+        if "uq_active_appointment_per_vehicle" in str(exc).lower() or "unique" in str(exc).lower():
+            raise HTTPException(409, "Phương tiện này hiện đã có một lịch hẹn đang hiệu lực. Vui lòng hoàn tất hoặc hủy lịch hẹn cũ trước khi đặt lịch mới.")
+        raise HTTPException(400, f"Không thể lưu thông tin lịch hẹn: {exc}")
+
     db.refresh(appointment)
+    log_audit_event(
+        db,
+        account.id,
+        entity_type="appointment",
+        entity_id=appointment.id,
+        action="create_appointment",
+        after_value=f"Đặt lịch hẹn #{appointment.code} cho xe #{appointment.vehicle_id} ngày {appointment.appointment_date}",
+    )
+    db.commit()
     return appointment
 
 
