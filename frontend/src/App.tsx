@@ -1277,54 +1277,272 @@ function AdminOverview({
       </section>
 
       {/* Process Flow Pipeline */}
-      <section className="panel" style={{ marginBottom: 16, padding: '12px 18px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <strong style={{ fontSize: '13.5px', color: '#1e293b', fontWeight: 700 }}>
-            Tiến trình luân chuyển hồ sơ toàn trung tâm
-          </strong>
-          <span style={{ fontSize: '12px', color: '#64748b' }}>
+      <section
+        className="panel"
+        style={{
+          marginBottom: 14,
+          padding: '10px 14px',
+          background: '#ffffff',
+          borderRadius: 12,
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingBottom: 6, borderBottom: '1px solid #f1f5f9' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#3b82f6' }} />
+            <span style={{ fontSize: '13px', color: '#1e293b', fontWeight: 700 }}>
+              Tiến trình luân chuyển hồ sơ toàn trung tâm
+            </span>
+          </div>
+          <span style={{ fontSize: '11.5px', color: '#64748b' }}>
             Phân bổ số lượng theo giai đoạn xử lý
           </span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#0f766e', textTransform: 'uppercase' }}>1. Tiếp nhận hồ sơ</div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>Chờ chuyển dây chuyền</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+          {/* Stage 1: Tiếp nhận */}
+          <div
+            style={{
+              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+              border: '1px solid #bae6fd',
+              borderRadius: 8,
+              padding: '6px 10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 6,
+                  background: '#0284c7',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                1
+              </span>
+              <div style={{ minWidth: 0, lineHeight: 1.25 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#0369a1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Tiếp nhận hồ sơ
+                </div>
+                <div style={{ fontSize: 10.5, color: '#0284c7', opacity: 0.85, whiteSpace: 'nowrap' }}>
+                  Chờ chuyển dây chuyền
+                </div>
+              </div>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', marginLeft: 10 }}>
+            <span
+              style={{
+                minWidth: 26,
+                height: 24,
+                padding: '0 7px',
+                borderRadius: 12,
+                background: '#ffffff',
+                boxShadow: '0 1px 2px rgba(2, 132, 199, 0.15)',
+                color: '#0369a1',
+                fontSize: 13.5,
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
               {inspections.filter(i => i.status === 'received').length}
-            </div>
+            </span>
           </div>
 
-          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', textTransform: 'uppercase' }}>2. Đang kiểm định</div>
-              <div style={{ fontSize: 11, color: '#78350f' }}>Đang đo 5 công đoạn</div>
+          {/* Stage 2: Đang kiểm định */}
+          <div
+            style={{
+              background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+              border: '1px solid #fde68a',
+              borderRadius: 8,
+              padding: '6px 10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 6,
+                  background: '#d97706',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                2
+              </span>
+              <div style={{ minWidth: 0, lineHeight: 1.25 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#b45309', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Đang kiểm định
+                </div>
+                <div style={{ fontSize: 10.5, color: '#b45309', opacity: 0.85, whiteSpace: 'nowrap' }}>
+                  Đang đo 5 công đoạn
+                </div>
+              </div>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#b45309', marginLeft: 10 }}>
+            <span
+              style={{
+                minWidth: 26,
+                height: 24,
+                padding: '0 7px',
+                borderRadius: 12,
+                background: '#ffffff',
+                boxShadow: '0 1px 2px rgba(217, 119, 6, 0.15)',
+                color: '#b45309',
+                fontSize: 13.5,
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
               {inspections.filter(i => i.status === 'in_progress').length}
-            </div>
+            </span>
           </div>
 
-          <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>3. Đạt tiêu chuẩn</div>
-              <div style={{ fontSize: 11, color: '#065f46' }}>Đã cấp/chờ cấp GCN</div>
+          {/* Stage 3: Đạt tiêu chuẩn */}
+          <div
+            style={{
+              background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+              border: '1px solid #bbf7d0',
+              borderRadius: 8,
+              padding: '6px 10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 6,
+                  background: '#16a34a',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                3
+              </span>
+              <div style={{ minWidth: 0, lineHeight: 1.25 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Đạt tiêu chuẩn
+                </div>
+                <div style={{ fontSize: 10.5, color: '#15803d', opacity: 0.85, whiteSpace: 'nowrap' }}>
+                  Đã cấp/chờ cấp GCN
+                </div>
+              </div>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#047857', marginLeft: 10 }}>
+            <span
+              style={{
+                minWidth: 26,
+                height: 24,
+                padding: '0 7px',
+                borderRadius: 12,
+                background: '#ffffff',
+                boxShadow: '0 1px 2px rgba(22, 163, 74, 0.15)',
+                color: '#15803d',
+                fontSize: 13.5,
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
               {passed}
-            </div>
+            </span>
           </div>
 
-          <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#be123c', textTransform: 'uppercase' }}>4. Không đạt (Lỗi Ma/DD)</div>
-              <div style={{ fontSize: 11, color: '#9f1239' }}>Cần khắc phục kỹ thuật</div>
+          {/* Stage 4: Không đạt */}
+          <div
+            style={{
+              background: 'linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%)',
+              border: '1px solid #fecdd3',
+              borderRadius: 8,
+              padding: '6px 10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 6,
+                  background: '#e11d48',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                4
+              </span>
+              <div style={{ minWidth: 0, lineHeight: 1.25 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#be123c', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Không đạt (Lỗi Ma/DD)
+                </div>
+                <div style={{ fontSize: 10.5, color: '#be123c', opacity: 0.85, whiteSpace: 'nowrap' }}>
+                  Cần khắc phục kỹ thuật
+                </div>
+              </div>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#be123c', marginLeft: 10 }}>
+            <span
+              style={{
+                minWidth: 26,
+                height: 24,
+                padding: '0 7px',
+                borderRadius: 12,
+                background: '#ffffff',
+                boxShadow: '0 1px 2px rgba(225, 29, 72, 0.15)',
+                color: '#be123c',
+                fontSize: 13.5,
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
               {failed}
-            </div>
+            </span>
           </div>
         </div>
       </section>
