@@ -98,6 +98,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [supportChatOpen, setSupportChatOpen] = useState(false)
 
   // Auto-dismiss floating toast notifications
   useEffect(() => {
@@ -338,6 +339,15 @@ function App() {
             <strong>{current}</strong>
           </div>
           <div className="top-actions">
+            <button
+              type="button"
+              className="topbar-ai-btn"
+              onClick={() => setSupportChatOpen(v => !v)}
+              title="Mở Trợ lý ảo AI đăng kiểm"
+            >
+              <span className="topbar-ai-sparkle">✨</span>
+              <span>Trợ lý AI</span>
+            </button>
             <div className="live-state"><i/> Hệ thống hoạt động</div>
             <div className="top-date">{new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(new Date())}</div>
             <button className="icon-button" title="Làm mới dữ liệu" onClick={() => void load(session)}>↻</button>
@@ -480,7 +490,13 @@ function App() {
         </div>
       </main>
 
-      <SupportChat session={session} onSignOut={signOut} />
+      <SupportChat
+        session={session}
+        onSignOut={signOut}
+        isOpen={supportChatOpen}
+        onToggle={() => setSupportChatOpen(v => !v)}
+        onClose={() => setSupportChatOpen(false)}
+      />
 
       {/* Floating Toast Notification Messages (Bottom-Right) */}
       <div className="toast-container" aria-live="polite">
@@ -2659,13 +2675,101 @@ function Forbidden403Page({
 /* ==========================================================================
    SUPPORT CHAT ASSISTANT
    ========================================================================== */
-function SupportChat({ session, onSignOut }: { session: Session; onSignOut?: () => void }) {
-  const [open, setOpen] = useState(false)
+function SupportChat({
+  session,
+  onSignOut,
+  isOpen,
+  onToggle,
+  onClose,
+}: {
+  session: Session
+  onSignOut?: () => void
+  isOpen?: boolean
+  onToggle?: () => void
+  onClose?: () => void
+}) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = isOpen !== undefined ? isOpen : internalOpen
+  const setOpen = useCallback(
+    (action: boolean | ((prev: boolean) => boolean)) => {
+      const next = typeof action === 'function' ? action(open) : action
+      if (!next && onClose) {
+        onClose()
+      } else if (onToggle && next !== open) {
+        onToggle()
+      }
+      setInternalOpen(next)
+    },
+    [open, onToggle, onClose]
+  )
+
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Draggable position state (Default: right 28px, bottom 92px - safely above table pagination)
+  const [pos, setPos] = useState<{ right: number; bottom: number }>(() => {
+    try {
+      const saved = localStorage.getItem('support-chat-pos')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (typeof parsed.right === 'number' && typeof parsed.bottom === 'number') {
+          return parsed
+        }
+      }
+    } catch {}
+    return { right: 28, bottom: 92 }
+  })
+
+  const draggingRef = useRef(false)
+  const dragStartRef = useRef<{ startX: number; startY: number; initRight: number; initBottom: number }>({
+    startX: 0,
+    startY: 0,
+    initRight: 28,
+    initBottom: 92,
+  })
+  const hasMovedRef = useRef(false)
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    draggingRef.current = true
+    hasMovedRef.current = false
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initRight: pos.right,
+      initBottom: pos.bottom,
+    }
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {}
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!draggingRef.current) return
+    const dx = e.clientX - dragStartRef.current.startX
+    const dy = e.clientY - dragStartRef.current.startY
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      hasMovedRef.current = true
+    }
+    const newRight = Math.max(12, Math.min(window.innerWidth - 68, dragStartRef.current.initRight - dx))
+    const newBottom = Math.max(16, Math.min(window.innerHeight - 76, dragStartRef.current.initBottom - dy))
+    setPos({ right: newRight, bottom: newBottom })
+  }
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!draggingRef.current) return
+    draggingRef.current = false
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {}
+    if (hasMovedRef.current) {
+      localStorage.setItem('support-chat-pos', JSON.stringify(pos))
+    } else {
+      setOpen(v => !v)
+    }
+  }
 
   useEffect(() => {
     if (open && messages.length === 0) {
@@ -2703,11 +2807,11 @@ function SupportChat({ session, onSignOut }: { session: Session; onSignOut?: () 
   }
 
   return (
-    <div className="support-chat-root">
+    <div className="support-chat-root" style={{ right: `${pos.right}px`, bottom: `${pos.bottom}px` }}>
       {open && (
         <section className="support-chat-panel" aria-label="Trợ lý đăng kiểm">
           <header className="support-chat-header">
-            <span className="support-chat-avatar">AI</span>
+            <span className="support-chat-avatar">✨</span>
             <div><strong>Trợ lý đăng kiểm</strong><small>{roleName[session.role]} · AI hỗ trợ</small></div>
             <button type="button" aria-label="Đóng chatbot" onClick={() => setOpen(false)}>×</button>
           </header>
@@ -2748,11 +2852,19 @@ function SupportChat({ session, onSignOut }: { session: Session; onSignOut?: () 
           <p className="support-chat-note">Không gửi mật khẩu hoặc thông tin cá nhân. AI có thể trả lời chưa chính xác.</p>
         </section>
       )}
-      <button type="button" className={`support-chat-toggle ${open ? 'is-open' : ''}`} onClick={() => setOpen(value => !value)} aria-label={open ? 'Đóng trợ lý' : 'Mở trợ lý'} title="Trợ lý AI">
+      <button
+        type="button"
+        className={`support-chat-toggle ${open ? 'is-open' : ''}`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        aria-label={open ? 'Đóng trợ lý' : 'Mở trợ lý'}
+        title="Trợ lý ảo AI đăng kiểm (Có thể kéo thả vị trí)"
+      >
         {open ? (
           <span className="support-chat-close-icon">×</span>
         ) : (
-          <svg className="support-chat-star-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <svg className="support-chat-star-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
             <path d="M12 2C12 7.523 7.523 12 2 12C7.523 12 12 16.477 12 22C12 16.477 16.477 12 22 12C16.477 12 12 7.523 12 2Z" />
           </svg>
         )}
