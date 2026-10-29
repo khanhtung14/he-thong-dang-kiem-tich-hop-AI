@@ -29,6 +29,10 @@ from app.routers import (
     reset_account_password,
     update_account_profile_admin,
     delete_account,
+    delete_owner,
+    delete_vehicle,
+    create_owner,
+    create_vehicle,
     send_forgot_password_otp,
     verify_otp_only,
     verify_otp_and_reset_password,
@@ -46,6 +50,8 @@ from app.schemas import (
     AccountStatusUpdateRequest,
     AccountCreateAdminRequest,
     AccountResetPasswordRequest,
+    OwnerCreate,
+    VehicleCreate,
     AccountProfileUpdateAdminRequest,
     ForgotPasswordRequest,
     VerifyOtpOnlyRequest,
@@ -580,6 +586,63 @@ class WorkflowTests(unittest.TestCase):
 
 
 
+
+    def test_delete_owner_and_vehicle_lifecycle(self):
+        # 1. Create owner
+        owner = create_owner(
+            body=OwnerCreate(
+                display_name="Chủ xe Test Delete",
+                identity_or_tax_number="TAX-DEL-001",
+                phone="0987654321",
+                address="123 Delete Street",
+            ),
+            account=self.admin,
+            db=self.db,
+        )
+        self.assertIsNotNone(owner.id)
+
+        # 2. Create vehicle
+        vehicle = create_vehicle(
+            body=VehicleCreate(
+                owner_id=owner.id,
+                registration_number="51H-999.88",
+                chassis_number="CHASSIS-DEL-001",
+                engine_number="ENGINE-DEL-001",
+                vehicle_type="Ô tô con 5 chỗ",
+            ),
+            account=self.admin,
+            db=self.db,
+        )
+        self.assertIsNotNone(vehicle.id)
+
+        # 3. Create appointment
+        app = create_appointment(
+            body=AppointmentCreate(
+                vehicle_id=vehicle.id,
+                appointment_date=date(2026, 11, 20),
+                start_time=time(8, 0),
+                end_time=time(9, 0),
+                service_type="Kiểm định định kỳ",
+            ),
+            account=self.admin,
+            db=self.db,
+        )
+
+        # 4. Attempt to delete vehicle while active appointment exists -> should raise 400
+        with self.assertRaises(HTTPException) as ctx_active:
+            delete_vehicle(vehicle_id=vehicle.id, account=self.admin, db=self.db)
+        self.assertEqual(ctx_active.exception.status_code, 400)
+
+        # 5. Cancel appointment
+        cancel_appointment(appointment_id=app.id, account=self.admin, db=self.db)
+
+        # 6. Delete vehicle now succeeds and cascades cancelled appointment
+        res_v = delete_vehicle(vehicle_id=vehicle.id, account=self.admin, db=self.db)
+        self.assertIn("thành công", res_v["message"])
+
+        # 7. Delete owner succeeds
+        res_o = delete_owner(owner_id=owner.id, account=self.admin, db=self.db)
+        self.assertIn("thành công", res_o["message"])
 
 if __name__ == "__main__":
     unittest.main()

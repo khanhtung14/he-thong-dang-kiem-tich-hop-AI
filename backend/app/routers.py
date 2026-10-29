@@ -1133,8 +1133,12 @@ def delete_vehicle(vehicle_id: int, db: Session = Depends(get_db), account: Acco
         raise HTTPException(403, "Bạn không có quyền xóa phương tiện này.")
     if vehicle.inspections:
         raise HTTPException(400, "Không thể xóa phương tiện đã có hồ sơ kiểm định.")
-    if vehicle.appointments:
-        raise HTTPException(400, "Không thể xóa phương tiện đã có lịch hẹn liên kết.")
+    active_appointments = [a for a in vehicle.appointments if a.status == AppointmentStatus.ACTIVE]
+    if active_appointments:
+        raise HTTPException(400, "Không thể xóa phương tiện đang có lịch hẹn hiệu lực. Vui lòng hủy lịch hẹn trước khi xóa.")
+
+    for apt in list(vehicle.appointments):
+        db.delete(apt)
 
     plate = vehicle.registration_number
     db.delete(vehicle)
