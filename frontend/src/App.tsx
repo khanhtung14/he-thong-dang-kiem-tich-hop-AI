@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, Appointment, ChatMessage, Inspection, InspectionResult, isTokenExpired, Owner, Role, Session, UserProfile, Vehicle, AccountListItem, login as apiLogin, register as apiRegister, sendForgotPasswordOtp, verifyOtpOnly, verifyOtpAndResetPassword } from './api'
 import './support-chat.css'
 
@@ -1157,7 +1157,26 @@ function AdminOverview({
   const activeInProcess = inspections.filter(i => ['received', 'in_progress', 'needs_documents'].includes(i.status)).length
   const totalDecided = passed + failed
   const passRate = totalDecided > 0 ? Math.round((passed / totalDecided) * 100) : 100
-  const recent = [...inspections].sort((a, b) => b.received_at.localeCompare(a.received_at)).slice(0, 5)
+  
+  // Pagination: 10 records per page for Recent Inspections
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 10
+
+  const sortedInspections = useMemo(() => {
+    return [...inspections].sort((a, b) => b.received_at.localeCompare(a.received_at))
+  }, [inspections])
+
+  const totalPages = Math.ceil(sortedInspections.length / pageSize) || 1
+  const paginatedInspections = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return sortedInspections.slice(start, start + pageSize)
+  }, [sortedInspections, currentPage])
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages))
+    }
+  }, [currentPage, totalPages])
 
   return (
     <>
@@ -1236,37 +1255,109 @@ function AdminOverview({
           </div>
           <button className="text-button" onClick={() => navigate('inspections')}>Xem tất cả hồ sơ <span>→</span></button>
         </div>
-        {recent.length ? (
-          <div className="table-wrap">
-            <table className="dashboard-recent-table">
-              <thead>
-                <tr>
-                  <th>MÃ HỒ SƠ</th>
-                  <th>PHƯƠNG TIỆN</th>
-                  <th>LOẠI KIỂM ĐỊNH</th>
-                  <th>KÊNH TIẾP NHẬN</th>
-                  <th>NGÀY TIẾP NHẬN</th>
-                  <th>TRẠNG THÁI</th>
-                  <th>THAO TÁC</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map(item => (
-                  <tr key={item.id}>
-                    <td><strong className="mono dashboard-code">{item.code}</strong></td>
-                    <td className="dashboard-vehicle-cell">{vehicleLabel(vehicles, item.vehicle_id)}</td>
-                    <td className="dashboard-type-cell">{item.inspection_type === 'first' ? 'Lần đầu' : 'Định kỳ'}</td>
-                    <td>{channelName(item.intake_channel)}</td>
-                    <td className="dashboard-date-cell">{formatDate(item.received_at)}</td>
-                    <td><StatusBadge value={item.status} /></td>
-                    <td>
-                      <button className="button button-outline button-sm" onClick={() => onOpenDetail(item)}>Chi tiết →</button>
-                    </td>
+        {sortedInspections.length ? (
+          <>
+            <div className="table-wrap">
+              <table className="dashboard-recent-table">
+                <thead>
+                  <tr>
+                    <th>MÃ HỒ SƠ</th>
+                    <th>PHƯƠNG TIỆN</th>
+                    <th>LOẠI KIỂM ĐỊNH</th>
+                    <th>KÊNH TIẾP NHẬN</th>
+                    <th>NGÀY TIẾP NHẬN</th>
+                    <th>TRẠNG THÁI</th>
+                    <th>THAO TÁC</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {paginatedInspections.map(item => (
+                    <tr key={item.id}>
+                      <td><strong className="mono dashboard-code">{item.code}</strong></td>
+                      <td className="dashboard-vehicle-cell">{vehicleLabel(vehicles, item.vehicle_id)}</td>
+                      <td className="dashboard-type-cell">{item.inspection_type === 'first' ? 'Lần đầu' : 'Định kỳ'}</td>
+                      <td>{channelName(item.intake_channel)}</td>
+                      <td className="dashboard-date-cell">{formatDate(item.received_at)}</td>
+                      <td><StatusBadge value={item.status} /></td>
+                      <td>
+                        <button className="button button-outline button-sm" onClick={() => onOpenDetail(item)}>Chi tiết →</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls */}
+            <div className="table-pagination-bar">
+              <div className="table-pagination-info">
+                Hiển thị <strong>{(currentPage - 1) * pageSize + 1}</strong> - <strong>{Math.min(currentPage * pageSize, sortedInspections.length)}</strong> trên tổng số <strong>{sortedInspections.length}</strong> hồ sơ
+              </div>
+              <div className="table-pagination-controls">
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(1)}
+                  title="Trang đầu"
+                >
+                  «
+                </button>
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  title="Trang trước"
+                >
+                  ‹ Trước
+                </button>
+
+                {Array.from({ length: totalPages }, (_, idx) => idx + 1)
+                  .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                  .reduce<(number | string)[]>((acc, p, i, arr) => {
+                    if (i > 0 && p - (arr[i - 1] as number) > 1) {
+                      acc.push('...')
+                    }
+                    acc.push(p)
+                    return acc
+                  }, [])
+                  .map((p, idx) =>
+                    p === '...' ? (
+                      <span key={`ellipsis-${idx}`} className="pagination-ellipsis">…</span>
+                    ) : (
+                      <button
+                        key={`page-${p}`}
+                        type="button"
+                        className={`pagination-btn ${p === currentPage ? 'active' : ''}`}
+                        onClick={() => setCurrentPage(p as number)}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  title="Trang sau"
+                >
+                  Sau ›
+                </button>
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(totalPages)}
+                  title="Trang cuối"
+                >
+                  »
+                </button>
+              </div>
+            </div>
+          </>
         ) : (
           <Empty title="Chưa có hồ sơ kiểm định" detail="Hồ sơ mới sẽ xuất hiện tại đây khi được tiếp nhận." />
         )}
@@ -2805,6 +2896,25 @@ function InspectionsPage({ role, vehicles, inspections, token, runAction, onOpen
   const visible = inspections.filter(i => filter === 'all' || i.status === filter);
   const canCreate = canIntake(role);
 
+  // Pagination: 10 items per page
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const totalPages = Math.ceil(visible.length / pageSize) || 1;
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return visible.slice(start, start + pageSize);
+  }, [visible, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [currentPage, totalPages]);
+
   function handleSelect(i: Inspection) {
     if (onOpenDetail) onOpenDetail(i)
     else setSelected(i)
@@ -2823,38 +2933,110 @@ function InspectionsPage({ role, vehicles, inspections, token, runAction, onOpen
     </div>
     <section className="panel list-panel inspections-panel">
       {visible.length ? (
-        <div className="table-wrap">
-          <table className="inspections-table">
-            <thead>
-              <tr>
-                <th>MÃ HỒ SƠ</th>
-                <th>PHƯƠNG TIỆN</th>
-                <th>LOẠI KIỂM ĐỊNH</th>
-                <th>KÊNH TIẾP NHẬN</th>
-                <th>NGÀY TIẾP NHẬN</th>
-                <th>TRẠNG THÁI</th>
-                <th>THAO TÁC</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map(i => (
-                <tr key={i.id}>
-                  <td><strong className="mono inspection-code">{i.code}</strong></td>
-                  <td><span className="plate plate-large">{vehicleLabel(vehicles, i.vehicle_id)}</span></td>
-                  <td className="inspection-type-cell"><strong>{i.inspection_type === 'first' ? 'Lần đầu' : 'Định kỳ'}</strong></td>
-                  <td className="inspection-channel-cell">{channelName(i.intake_channel)}</td>
-                  <td className="inspection-date-cell">{formatDate(i.received_at)}</td>
-                  <td><StatusBadge value={i.status}/></td>
-                  <td>
-                    <button className="button button-outline button-sm detail-action-btn" onClick={() => handleSelect(i)}>
-                      {role === 'inspector' ? 'Vào đo kiểm →' : 'Chi tiết →'}
-                    </button>
-                  </td>
+        <>
+          <div className="table-wrap">
+            <table className="inspections-table">
+              <thead>
+                <tr>
+                  <th>MÃ HỒ SƠ</th>
+                  <th>PHƯƠNG TIỆN</th>
+                  <th>LOẠI KIỂM ĐỊNH</th>
+                  <th>KÊNH TIẾP NHẬN</th>
+                  <th>NGÀY TIẾP NHẬN</th>
+                  <th>TRẠNG THÁI</th>
+                  <th>THAO TÁC</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {paginated.map(i => (
+                  <tr key={i.id}>
+                    <td><strong className="mono inspection-code">{i.code}</strong></td>
+                    <td><span className="plate plate-large">{vehicleLabel(vehicles, i.vehicle_id)}</span></td>
+                    <td className="inspection-type-cell"><strong>{i.inspection_type === 'first' ? 'Lần đầu' : 'Định kỳ'}</strong></td>
+                    <td className="inspection-channel-cell">{channelName(i.intake_channel)}</td>
+                    <td className="inspection-date-cell">{formatDate(i.received_at)}</td>
+                    <td><StatusBadge value={i.status}/></td>
+                    <td>
+                      <button className="button button-outline button-sm detail-action-btn" onClick={() => handleSelect(i)}>
+                        {role === 'inspector' ? 'Vào đo kiểm →' : 'Chi tiết →'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="table-pagination-bar">
+            <div className="table-pagination-info">
+              Hiển thị <strong>{(currentPage - 1) * pageSize + 1}</strong> - <strong>{Math.min(currentPage * pageSize, visible.length)}</strong> trên tổng số <strong>{visible.length}</strong> hồ sơ
+            </div>
+            <div className="table-pagination-controls">
+              <button
+                type="button"
+                className="pagination-btn"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(1)}
+                title="Trang đầu"
+              >
+                «
+              </button>
+              <button
+                type="button"
+                className="pagination-btn"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                title="Trang trước"
+              >
+                ‹ Trước
+              </button>
+
+              {Array.from({ length: totalPages }, (_, idx) => idx + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                .reduce<(number | string)[]>((acc, p, i, arr) => {
+                  if (i > 0 && p - (arr[i - 1] as number) > 1) {
+                    acc.push('...')
+                  }
+                  acc.push(p)
+                  return acc
+                }, [])
+                .map((p, idx) =>
+                  p === '...' ? (
+                    <span key={`ellipsis-${idx}`} className="pagination-ellipsis">…</span>
+                  ) : (
+                    <button
+                      key={`page-${p}`}
+                      type="button"
+                      className={`pagination-btn ${p === currentPage ? 'active' : ''}`}
+                      onClick={() => setCurrentPage(p as number)}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+
+              <button
+                type="button"
+                className="pagination-btn"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                title="Trang sau"
+              >
+                Sau ›
+              </button>
+              <button
+                type="button"
+                className="pagination-btn"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+                title="Trang cuối"
+              >
+                »
+              </button>
+            </div>
+          </div>
+        </>
       ) : (
         <Empty title="Chưa có hồ sơ kiểm định" detail="Tiếp nhận hồ sơ mới để bắt đầu theo dõi."/>
       )}
