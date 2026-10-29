@@ -2439,12 +2439,12 @@ input:-webkit-autofill:active {
 }
 
 /* Responsive Media Queries */
-@media(max-width: 1100px) {
-  .sidebar { width: 268px; }
-  .main-area { margin-left: 268px; }
-  .content { padding: 28px 24px; }
-  .topbar { padding: 0 24px; }
-  .stat-grid { gap: 12px; }
+@media(max-width: 1200px) {
+  .sidebar { width: 240px; padding: 18px 12px 14px; }
+  .main-area { margin-left: 240px; }
+  .content { padding: 16px 16px 30px; }
+  .topbar { padding: 0 16px; }
+  .stat-grid { gap: 10px; }
   .dashboard-grid { grid-template-columns: 1fr; }
   .login-page { grid-template-columns: 1fr 1fr; }
 }
