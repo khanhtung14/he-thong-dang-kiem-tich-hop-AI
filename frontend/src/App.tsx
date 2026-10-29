@@ -4438,6 +4438,24 @@ function AuditLogsPage({ session }: { session: Session }) {
     return filteredLogs.slice(start, start + pageSize)
   }, [filteredLogs, currentPage, pageSize])
 
+  const formatTime = (isoString: string) => {
+    try {
+      const d = new Date(isoString)
+      return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    } catch {
+      return isoString
+    }
+  }
+
+  const formatDate = (isoString: string) => {
+    try {
+      const d = new Date(isoString)
+      return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    } catch {
+      return ''
+    }
+  }
+
   const formatDateTime = (isoString: string) => {
     try {
       const d = new Date(isoString)
@@ -4654,7 +4672,7 @@ function AuditLogsPage({ session }: { session: Session }) {
         {error && <div className="form-error" style={{ marginTop: '16px' }}>{error}</div>}
 
         {/* Data Table */}
-        <div className="table-responsive" style={{ marginTop: '18px', overflowX: 'auto' }}>
+        <div style={{ marginTop: '18px', width: '100%', overflowX: 'hidden' }}>
           {loading ? (
             <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b' }}>
               <div className="loading-spinner" style={{ margin: '0 auto 12px' }} />
@@ -4667,16 +4685,16 @@ function AuditLogsPage({ session }: { session: Session }) {
               <p style={{ fontSize: '13px', marginTop: '4px' }}>Hãy thử điều chỉnh lại bộ lọc tìm kiếm hoặc từ khóa.</p>
             </div>
           ) : (
-            <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table className="table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={{ width: '155px', textAlign: 'left' }}>THỜI GIAN</th>
-                  <th style={{ minWidth: '180px', textAlign: 'left' }}>NGƯỜI THỰC HIỆN</th>
-                  <th style={{ width: '150px', textAlign: 'left' }}>VAI TRÒ</th>
-                  <th style={{ width: '175px', textAlign: 'left' }}>THAO TÁC / HÀNH ĐỘNG</th>
-                  <th style={{ width: '150px', textAlign: 'left' }}>ĐỐI TƯỢNG</th>
-                  <th style={{ minWidth: '220px', textAlign: 'left' }}>NỘI DUNG CHI TIẾT</th>
-                  <th style={{ width: '85px', textAlign: 'center' }}>XEM</th>
+                  <th style={{ width: '110px', textAlign: 'left' }}>THỜI GIAN</th>
+                  <th style={{ width: '175px', textAlign: 'left' }}>NGƯỜI THỰC HIỆN</th>
+                  <th style={{ width: '135px', textAlign: 'left' }}>VAI TRÒ</th>
+                  <th style={{ width: '150px', textAlign: 'left' }}>THAO TÁC / HÀNH ĐỘNG</th>
+                  <th style={{ width: '120px', textAlign: 'left' }}>ĐỐI TƯỢNG</th>
+                  <th style={{ textAlign: 'left' }}>NỘI DUNG CHI TIẾT</th>
+                  <th style={{ width: '90px', textAlign: 'right' }}>THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>
@@ -4684,15 +4702,20 @@ function AuditLogsPage({ session }: { session: Session }) {
                   const badgeStyle = getActionBadgeColor(item.action)
                   return (
                     <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ fontSize: '13px', color: '#475569', whiteSpace: 'nowrap' }}>
-                        {formatDateTime(item.created_at)}
+                      <td style={{ fontSize: '13px', verticalAlign: 'middle' }}>
+                        <div style={{ fontWeight: 600, color: '#1e293b' }}>
+                          {formatTime(item.created_at)}
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+                          {formatDate(item.created_at)}
+                        </div>
                       </td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <td style={{ verticalAlign: 'middle', overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
                           <div
                             style={{
-                              width: '32px',
-                              height: '32px',
+                              width: '30px',
+                              height: '30px',
                               borderRadius: '50%',
                               backgroundColor: '#e0e7ff',
                               color: '#3730a3',
@@ -4700,34 +4723,37 @@ function AuditLogsPage({ session }: { session: Session }) {
                               alignItems: 'center',
                               justifyContent: 'center',
                               fontWeight: 700,
-                              fontSize: '13px',
+                              fontSize: '12.5px',
                               flexShrink: 0,
                             }}
                           >
                             {(item.actor_display_name || item.actor_username).slice(0, 1).toUpperCase()}
                           </div>
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: '13.5px', color: '#1e293b' }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div
+                              style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              title={item.actor_display_name || item.actor_username}
+                            >
                               {item.actor_display_name || item.actor_username}
                             </div>
-                            <div style={{ fontSize: '12px', color: '#64748b' }}>
+                            <div style={{ fontSize: '11.5px', color: '#64748b' }}>
                               @{item.actor_username}
                             </div>
                           </div>
                         </div>
                       </td>
-                      <td>
+                      <td style={{ verticalAlign: 'middle' }}>
                         <span className={`role-badge-pill role-badge-${item.actor_role}`}>
                           {roleName[item.actor_role] || item.actor_role}
                         </span>
                       </td>
-                      <td>
+                      <td style={{ verticalAlign: 'middle' }}>
                         <span
                           style={{
                             display: 'inline-block',
-                            padding: '4px 10px',
+                            padding: '4px 8px',
                             borderRadius: '6px',
-                            fontSize: '12.5px',
+                            fontSize: '12px',
                             fontWeight: 600,
                             backgroundColor: badgeStyle.bg,
                             color: badgeStyle.color,
@@ -4738,27 +4764,43 @@ function AuditLogsPage({ session }: { session: Session }) {
                           {item.action_label}
                         </span>
                       </td>
-                      <td>
-                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+                      <td style={{ verticalAlign: 'middle' }}>
+                        <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#334155' }}>
                           {getEntityTypeLabel(item.entity_type)}
                         </div>
-                        <div style={{ fontSize: '11.5px', color: '#94a3b8' }}>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>
                           Mã ID: #{item.entity_id}
                         </div>
                       </td>
-                      <td style={{ fontSize: '13px', color: '#334155' }}>
-                        {item.after_value || item.before_value || '—'}
+                      <td style={{ verticalAlign: 'middle' }}>
+                        <div
+                          style={{
+                            fontSize: '13px',
+                            color: '#334155',
+                            lineHeight: 1.4,
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            wordBreak: 'break-word',
+                          }}
+                          title={item.after_value || item.before_value || ''}
+                        >
+                          {item.after_value || item.before_value || '—'}
+                        </div>
                       </td>
-                      <td style={{ textAlign: 'center' }}>
+                      <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
                         <button
                           type="button"
                           className="button button-outline"
                           onClick={() => setSelectedLog(item)}
                           style={{
-                            padding: '4px 10px',
-                            fontSize: '12px',
-                            height: '30px',
+                            padding: '4px 8px',
+                            fontSize: '11.5px',
+                            height: '28px',
                             borderRadius: '6px',
+                            whiteSpace: 'nowrap',
                           }}
                           title="Xem chi tiết thao tác"
                         >
