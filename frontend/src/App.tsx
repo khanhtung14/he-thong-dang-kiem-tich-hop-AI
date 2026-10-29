@@ -4588,23 +4588,23 @@ function AuditLogsPage({ session }: { session: Session }) {
             }}
             title="Lọc theo thao tác cụ thể"
           >
-            <option value="all">⚡ Tất cả thao tác</option>
-            <option value="create_appointment">📅 Đặt lịch hẹn</option>
-            <option value="cancel_appointment">❌ Hủy lịch hẹn</option>
-            <option value="create_inspection">📋 Tiếp nhận hồ sơ</option>
-            <option value="record_result">🔬 Ghi nhận đo kiểm</option>
-            <option value="finalize_inspection">🏁 Chốt kết luận kiểm định</option>
-            <option value="issue_certificate">📜 Cấp GCN / Tem</option>
-            <option value="create_vehicle">🚗 Đăng ký phương tiện</option>
-            <option value="create_owner">👤 Thêm chủ xe</option>
-            <option value="create_account">➕ Tạo tài khoản</option>
-            <option value="update_role">🛡 Phân quyền vai trò</option>
-            <option value="lock_account">🔒 Khóa tài khoản</option>
-            <option value="unlock_account">🔓 Mở khóa tài khoản</option>
-            <option value="reset_password">🔑 Đặt lại mật khẩu</option>
-            <option value="login">🚪 Đăng nhập hệ thống</option>
-            <option value="register">📝 Đăng ký tài khoản</option>
-            <option value="administrative_correction">⚖ Điều chỉnh hồ sơ</option>
+            <option value="all">Tất cả thao tác</option>
+            <option value="create_appointment">Đặt lịch hẹn</option>
+            <option value="cancel_appointment">Hủy lịch hẹn</option>
+            <option value="create_inspection">Tiếp nhận hồ sơ</option>
+            <option value="record_result">Ghi nhận đo kiểm</option>
+            <option value="finalize_inspection">Chốt kết luận kiểm định</option>
+            <option value="issue_certificate">Cấp GCN / Tem</option>
+            <option value="create_vehicle">Đăng ký phương tiện</option>
+            <option value="create_owner">Thêm chủ xe</option>
+            <option value="create_account">Tạo tài khoản</option>
+            <option value="update_role">Phân quyền vai trò</option>
+            <option value="lock_account">Khóa tài khoản</option>
+            <option value="unlock_account">Mở khóa tài khoản</option>
+            <option value="reset_password">Đặt lại mật khẩu</option>
+            <option value="login">Đăng nhập hệ thống</option>
+            <option value="register">Đăng ký tài khoản</option>
+            <option value="administrative_correction">Điều chỉnh hồ sơ</option>
           </select>
 
           <select
@@ -4624,7 +4624,7 @@ function AuditLogsPage({ session }: { session: Session }) {
             }}
             title="Lọc theo vai trò"
           >
-            <option value="all">👥 Tất cả vai trò</option>
+            <option value="all">Tất cả vai trò</option>
             <option value="admin">Quản trị viên</option>
             <option value="intake">Nhân viên tiếp nhận</option>
             <option value="inspector">Kiểm định viên</option>
