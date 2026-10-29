@@ -4684,13 +4684,13 @@ function AuditLogsPage({ session }: { session: Session }) {
             <table className="table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={{ width: '110px', textAlign: 'left' }}>THỜI GIAN</th>
-                  <th style={{ width: '175px', textAlign: 'left' }}>NGƯỜI THỰC HIỆN</th>
-                  <th style={{ width: '135px', textAlign: 'left' }}>VAI TRÒ</th>
-                  <th style={{ width: '150px', textAlign: 'left' }}>THAO TÁC / HÀNH ĐỘNG</th>
-                  <th style={{ width: '120px', textAlign: 'left' }}>ĐỐI TƯỢNG</th>
-                  <th style={{ textAlign: 'left' }}>NỘI DUNG CHI TIẾT</th>
-                  <th style={{ width: '90px', textAlign: 'right' }}>THAO TÁC</th>
+                  <th style={{ width: '95px', textAlign: 'left', padding: '12px 6px', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>THỜI GIAN</th>
+                  <th style={{ width: '155px', textAlign: 'left', padding: '12px 8px', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>NGƯỜI THỰC HIỆN</th>
+                  <th style={{ width: '145px', textAlign: 'left', padding: '12px 8px', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>VAI TRÒ</th>
+                  <th style={{ width: '165px', textAlign: 'left', padding: '12px 8px', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>HÀNH ĐỘNG</th>
+                  <th style={{ width: '120px', textAlign: 'left', padding: '12px 8px', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>ĐỐI TƯỢNG</th>
+                  <th style={{ textAlign: 'left', padding: '12px 10px', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>NỘI DUNG CHI TIẾT</th>
+                  <th style={{ width: '80px', textAlign: 'right', padding: '12px 6px', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>
@@ -4698,20 +4698,20 @@ function AuditLogsPage({ session }: { session: Session }) {
                   const badgeStyle = getActionBadgeColor(item.action)
                   return (
                     <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ fontSize: '13px', verticalAlign: 'middle' }}>
+                      <td style={{ fontSize: '13px', verticalAlign: 'middle', padding: '12px 6px', boxSizing: 'border-box' }}>
                         <div style={{ fontWeight: 600, color: '#1e293b' }}>
                           {formatTime(item.created_at)}
                         </div>
-                        <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
                           {formatDate(item.created_at)}
                         </div>
                       </td>
-                      <td style={{ verticalAlign: 'middle', overflow: 'hidden' }}>
+                      <td style={{ verticalAlign: 'middle', overflow: 'hidden', padding: '12px 8px', boxSizing: 'border-box' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
                           <div
                             style={{
-                              width: '30px',
-                              height: '30px',
+                              width: '28px',
+                              height: '28px',
                               borderRadius: '50%',
                               backgroundColor: '#e0e7ff',
                               color: '#3730a3',
@@ -4719,7 +4719,7 @@ function AuditLogsPage({ session }: { session: Session }) {
                               alignItems: 'center',
                               justifyContent: 'center',
                               fontWeight: 700,
-                              fontSize: '12.5px',
+                              fontSize: '12px',
                               flexShrink: 0,
                             }}
                           >
@@ -4727,29 +4727,32 @@ function AuditLogsPage({ session }: { session: Session }) {
                           </div>
                           <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             <div
-                              style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              style={{ fontWeight: 600, fontSize: '12.5px', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                               title={item.actor_display_name || item.actor_username}
                             >
                               {item.actor_display_name || item.actor_username}
                             </div>
-                            <div style={{ fontSize: '11.5px', color: '#64748b' }}>
+                            <div style={{ fontSize: '11px', color: '#64748b' }}>
                               @{item.actor_username}
                             </div>
                           </div>
                         </div>
                       </td>
-                      <td style={{ verticalAlign: 'middle' }}>
-                        <span className={`role-badge-pill role-badge-${item.actor_role}`}>
+                      <td style={{ verticalAlign: 'middle', padding: '12px 8px', boxSizing: 'border-box' }}>
+                        <span
+                          className={`role-badge-pill role-badge-${item.actor_role}`}
+                          style={{ fontSize: '11px', padding: '3px 8px', whiteSpace: 'nowrap', display: 'inline-block' }}
+                        >
                           {roleName[item.actor_role] || item.actor_role}
                         </span>
                       </td>
-                      <td style={{ verticalAlign: 'middle' }}>
+                      <td style={{ verticalAlign: 'middle', padding: '12px 8px', boxSizing: 'border-box' }}>
                         <span
                           style={{
                             display: 'inline-block',
-                            padding: '4px 8px',
+                            padding: '3px 8px',
                             borderRadius: '6px',
-                            fontSize: '12px',
+                            fontSize: '11.5px',
                             fontWeight: 600,
                             backgroundColor: badgeStyle.bg,
                             color: badgeStyle.color,
@@ -4760,18 +4763,18 @@ function AuditLogsPage({ session }: { session: Session }) {
                           {item.action_label}
                         </span>
                       </td>
-                      <td style={{ verticalAlign: 'middle' }}>
-                        <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#334155' }}>
+                      <td style={{ verticalAlign: 'middle', padding: '12px 8px', boxSizing: 'border-box' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
                           {getEntityTypeLabel(item.entity_type)}
                         </div>
                         <div style={{ fontSize: '11px', color: '#94a3b8' }}>
                           Mã ID: #{item.entity_id}
                         </div>
                       </td>
-                      <td style={{ verticalAlign: 'middle' }}>
+                      <td style={{ verticalAlign: 'middle', padding: '12px 10px', boxSizing: 'border-box' }}>
                         <div
                           style={{
-                            fontSize: '13px',
+                            fontSize: '12.5px',
                             color: '#334155',
                             lineHeight: 1.4,
                             display: '-webkit-box',
@@ -4786,13 +4789,13 @@ function AuditLogsPage({ session }: { session: Session }) {
                           {item.after_value || item.before_value || '—'}
                         </div>
                       </td>
-                      <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                      <td style={{ textAlign: 'right', verticalAlign: 'middle', padding: '12px 6px', boxSizing: 'border-box' }}>
                         <button
                           type="button"
                           className="button button-outline"
                           onClick={() => setSelectedLog(item)}
                           style={{
-                            padding: '4px 8px',
+                            padding: '3px 8px',
                             fontSize: '11.5px',
                             height: '28px',
                             borderRadius: '6px',
