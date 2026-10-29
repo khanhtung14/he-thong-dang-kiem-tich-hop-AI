@@ -1605,6 +1605,14 @@ def delete_account(
 
 
 
+ACTION_GROUPS: dict[str, list[str]] = {
+    "group_appointment": ["create_appointment", "cancel_appointment"],
+    "group_inspection": ["create_inspection", "record_result", "finalize_inspection", "issue_certificate", "administrative_correction"],
+    "group_vehicle_owner": ["create_vehicle", "create_owner"],
+    "group_account": ["login", "register", "create_account", "update_role", "lock_account", "unlock_account", "reset_password"],
+}
+
+
 @api.get("/audit-logs", response_model=list[AuditLogItem])
 def list_audit_logs(
     action: str | None = None,
@@ -1618,7 +1626,11 @@ def list_audit_logs(
     stmt = select(AuditEntry).join(Account, AuditEntry.actor_account_id == Account.id).order_by(AuditEntry.created_at.desc(), AuditEntry.id.desc())
 
     if action and action.strip():
-        stmt = stmt.where(AuditEntry.action == action.strip())
+        act = action.strip()
+        if act in ACTION_GROUPS:
+            stmt = stmt.where(AuditEntry.action.in_(ACTION_GROUPS[act]))
+        else:
+            stmt = stmt.where(AuditEntry.action == act)
     if role:
         stmt = stmt.where(Account.role == role)
     if query_text and query_text.strip():

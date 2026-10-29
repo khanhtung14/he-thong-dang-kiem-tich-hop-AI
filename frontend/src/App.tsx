@@ -4333,6 +4333,13 @@ function SystemRolesPage({ session }: { session: Session }) {
 /* ==========================================================================
    SYSTEM AUDIT & ACTIVITY LOGS PAGE
    ========================================================================== */
+const AUDIT_ACTION_GROUPS: Record<string, string[]> = {
+  group_appointment: ['create_appointment', 'cancel_appointment'],
+  group_inspection: ['create_inspection', 'record_result', 'finalize_inspection', 'issue_certificate', 'administrative_correction'],
+  group_vehicle_owner: ['create_vehicle', 'create_owner'],
+  group_account: ['login', 'register', 'create_account', 'update_role', 'lock_account', 'unlock_account', 'reset_password'],
+}
+
 function formatAuditDetailText(text?: string | null): string {
   if (!text) return '—'
   return text
@@ -4374,7 +4381,14 @@ function AuditLogsPage({ session }: { session: Session }) {
   // Client-side instant filter to ensure ultra-smooth response
   const filteredLogs = useMemo(() => {
     return logs.filter(item => {
-      if (selectedAction !== 'all' && item.action !== selectedAction) return false
+      if (selectedAction !== 'all') {
+        const groupList = AUDIT_ACTION_GROUPS[selectedAction]
+        if (groupList) {
+          if (!groupList.includes(item.action)) return false
+        } else if (item.action !== selectedAction) {
+          return false
+        }
+      }
       if (selectedRole !== 'all' && item.actor_role !== selectedRole) return false
       if (!query.trim()) return true
       const q = query.toLowerCase()
@@ -4556,27 +4570,15 @@ function AuditLogsPage({ session }: { session: Session }) {
               border: '1.5px solid #e2e8f0',
               padding: '0 14px',
               fontSize: '14px',
-              minWidth: '200px',
+              minWidth: '220px',
             }}
-            title="Lọc theo thao tác cụ thể"
+            title="Lọc theo nhóm thao tác"
           >
             <option value="all">Tất cả thao tác</option>
-            <option value="create_appointment">Đặt lịch hẹn</option>
-            <option value="cancel_appointment">Hủy lịch hẹn</option>
-            <option value="create_inspection">Tiếp nhận hồ sơ</option>
-            <option value="record_result">Ghi nhận đo kiểm</option>
-            <option value="finalize_inspection">Chốt kết luận kiểm định</option>
-            <option value="issue_certificate">Cấp GCN / Tem</option>
-            <option value="create_vehicle">Đăng ký phương tiện</option>
-            <option value="create_owner">Thêm chủ xe</option>
-            <option value="create_account">Tạo tài khoản</option>
-            <option value="update_role">Phân quyền vai trò</option>
-            <option value="lock_account">Khóa tài khoản</option>
-            <option value="unlock_account">Mở khóa tài khoản</option>
-            <option value="reset_password">Đặt lại mật khẩu</option>
-            <option value="login">Đăng nhập hệ thống</option>
-            <option value="register">Đăng ký tài khoản</option>
-            <option value="administrative_correction">Điều chỉnh hồ sơ</option>
+            <option value="group_appointment">Lịch hẹn (Đặt, Hủy)</option>
+            <option value="group_inspection">Kiểm định xe (Tiếp nhận, Đo kiểm, Cấp tem)</option>
+            <option value="group_vehicle_owner">Phương tiện & Chủ xe</option>
+            <option value="group_account">Tài khoản & Phân quyền</option>
           </select>
 
           <select
