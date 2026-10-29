@@ -1281,21 +1281,21 @@ function AdminOverview({
         className="panel"
         style={{
           marginBottom: 14,
-          padding: 10,
+          padding: 8,
           background: '#ffffff',
-          borderRadius: 12,
+          borderRadius: 10,
           border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
         }}
       >
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
           {/* Stage 1: Tiếp nhận */}
           <div
             style={{
-              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-              border: '1px solid #bae6fd',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
               borderRadius: 8,
-              padding: '6px 10px',
+              padding: '6px 12px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -1305,13 +1305,13 @@ function AdminOverview({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
               <span
                 style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 6,
-                  background: '#0284c7',
-                  color: '#fff',
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  background: '#e2e8f0',
+                  color: '#475569',
                   fontSize: 11,
-                  fontWeight: 800,
+                  fontWeight: 700,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1321,25 +1321,25 @@ function AdminOverview({
                 1
               </span>
               <div style={{ minWidth: 0, lineHeight: 1.25 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#0369a1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   Tiếp nhận hồ sơ
                 </div>
-                <div style={{ fontSize: 10.5, color: '#0284c7', opacity: 0.85, whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 10.5, color: '#64748b', whiteSpace: 'nowrap' }}>
                   Chờ chuyển dây chuyền
                 </div>
               </div>
             </div>
             <span
               style={{
-                minWidth: 26,
-                height: 24,
+                minWidth: 24,
+                height: 22,
                 padding: '0 7px',
-                borderRadius: 12,
+                borderRadius: 11,
                 background: '#ffffff',
-                boxShadow: '0 1px 2px rgba(2, 132, 199, 0.15)',
-                color: '#0369a1',
-                fontSize: 13.5,
-                fontWeight: 800,
+                border: '1px solid #cbd5e1',
+                color: '#0f172a',
+                fontSize: 13,
+                fontWeight: 700,
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1353,10 +1353,10 @@ function AdminOverview({
           {/* Stage 2: Đang kiểm định */}
           <div
             style={{
-              background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
-              border: '1px solid #fde68a',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
               borderRadius: 8,
-              padding: '6px 10px',
+              padding: '6px 12px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -1366,13 +1366,13 @@ function AdminOverview({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
               <span
                 style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 6,
-                  background: '#d97706',
-                  color: '#fff',
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  background: '#e2e8f0',
+                  color: '#475569',
                   fontSize: 11,
-                  fontWeight: 800,
+                  fontWeight: 700,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1382,25 +1382,25 @@ function AdminOverview({
                 2
               </span>
               <div style={{ minWidth: 0, lineHeight: 1.25 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#b45309', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   Đang kiểm định
                 </div>
-                <div style={{ fontSize: 10.5, color: '#b45309', opacity: 0.85, whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 10.5, color: '#64748b', whiteSpace: 'nowrap' }}>
                   Đang đo 5 công đoạn
                 </div>
               </div>
             </div>
             <span
               style={{
-                minWidth: 26,
-                height: 24,
+                minWidth: 24,
+                height: 22,
                 padding: '0 7px',
-                borderRadius: 12,
+                borderRadius: 11,
                 background: '#ffffff',
-                boxShadow: '0 1px 2px rgba(217, 119, 6, 0.15)',
-                color: '#b45309',
-                fontSize: 13.5,
-                fontWeight: 800,
+                border: '1px solid #cbd5e1',
+                color: '#0f172a',
+                fontSize: 13,
+                fontWeight: 700,
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1414,10 +1414,10 @@ function AdminOverview({
           {/* Stage 3: Đạt tiêu chuẩn */}
           <div
             style={{
-              background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-              border: '1px solid #bbf7d0',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
               borderRadius: 8,
-              padding: '6px 10px',
+              padding: '6px 12px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -1427,13 +1427,13 @@ function AdminOverview({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
               <span
                 style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 6,
-                  background: '#16a34a',
-                  color: '#fff',
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  background: '#e2e8f0',
+                  color: '#475569',
                   fontSize: 11,
-                  fontWeight: 800,
+                  fontWeight: 700,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1443,25 +1443,25 @@ function AdminOverview({
                 3
               </span>
               <div style={{ minWidth: 0, lineHeight: 1.25 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   Đạt tiêu chuẩn
                 </div>
-                <div style={{ fontSize: 10.5, color: '#15803d', opacity: 0.85, whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 10.5, color: '#64748b', whiteSpace: 'nowrap' }}>
                   Đã cấp/chờ cấp GCN
                 </div>
               </div>
             </div>
             <span
               style={{
-                minWidth: 26,
-                height: 24,
+                minWidth: 24,
+                height: 22,
                 padding: '0 7px',
-                borderRadius: 12,
+                borderRadius: 11,
                 background: '#ffffff',
-                boxShadow: '0 1px 2px rgba(22, 163, 74, 0.15)',
-                color: '#15803d',
-                fontSize: 13.5,
-                fontWeight: 800,
+                border: '1px solid #cbd5e1',
+                color: '#0f172a',
+                fontSize: 13,
+                fontWeight: 700,
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1475,10 +1475,10 @@ function AdminOverview({
           {/* Stage 4: Không đạt */}
           <div
             style={{
-              background: 'linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%)',
-              border: '1px solid #fecdd3',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
               borderRadius: 8,
-              padding: '6px 10px',
+              padding: '6px 12px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -1488,13 +1488,13 @@ function AdminOverview({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
               <span
                 style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 6,
-                  background: '#e11d48',
-                  color: '#fff',
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  background: '#e2e8f0',
+                  color: '#475569',
                   fontSize: 11,
-                  fontWeight: 800,
+                  fontWeight: 700,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1504,25 +1504,25 @@ function AdminOverview({
                 4
               </span>
               <div style={{ minWidth: 0, lineHeight: 1.25 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#be123c', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   Không đạt (Lỗi Ma/DD)
                 </div>
-                <div style={{ fontSize: 10.5, color: '#be123c', opacity: 0.85, whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 10.5, color: '#64748b', whiteSpace: 'nowrap' }}>
                   Cần khắc phục kỹ thuật
                 </div>
               </div>
             </div>
             <span
               style={{
-                minWidth: 26,
-                height: 24,
+                minWidth: 24,
+                height: 22,
                 padding: '0 7px',
-                borderRadius: 12,
+                borderRadius: 11,
                 background: '#ffffff',
-                boxShadow: '0 1px 2px rgba(225, 29, 72, 0.15)',
-                color: '#be123c',
-                fontSize: 13.5,
-                fontWeight: 800,
+                border: '1px solid #cbd5e1',
+                color: '#0f172a',
+                fontSize: 13,
+                fontWeight: 700,
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
