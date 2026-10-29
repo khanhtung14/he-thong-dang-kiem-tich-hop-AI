@@ -441,8 +441,22 @@ function App() {
                 )
               )}
 
-              {page === 'vehicles' && <VehiclesPage role={session.role} vehicles={vehicles} owners={owners} onCreate={body => runAction(() => api.createVehicle(session.token, body), 'Đã thêm phương tiện mới.')} />}
-              {page === 'owners' && <OwnersPage owners={owners} onCreate={body => runAction(() => api.createOwner(session.token, body), 'Đã tạo hồ sơ chủ xe.')} />}
+              {page === 'vehicles' && (
+                <VehiclesPage
+                  role={session.role}
+                  vehicles={vehicles}
+                  owners={owners}
+                  onCreate={body => runAction(() => api.createVehicle(session.token, body), 'Đã thêm phương tiện mới.')}
+                  onDelete={id => runAction(() => api.deleteVehicle(session.token, id), 'Đã xóa phương tiện thành công.')}
+                />
+              )}
+              {page === 'owners' && (
+                <OwnersPage
+                  owners={owners}
+                  onCreate={body => runAction(() => api.createOwner(session.token, body), 'Đã tạo hồ sơ chủ xe.')}
+                  onDelete={id => runAction(() => api.deleteOwner(session.token, id), 'Đã xóa hồ sơ chủ xe thành công.')}
+                />
+              )}
               {page === 'appointments' && <AppointmentsPage role={session.role} vehicles={vehicles} appointments={appointments} onCreate={body => runAction(() => api.createAppointment(session.token, body), 'Đã tạo lịch hẹn.')} onCancel={id => runAction(() => api.cancelAppointment(session.token, id), 'Đã hủy lịch hẹn.')} />}
               {page === 'inspections' && (
                 <InspectionsPage
@@ -2828,7 +2842,19 @@ function SupportChat({
 /* ==========================================================================
    STANDARD CRUD PAGES (VEHICLES, OWNERS, APPOINTMENTS, INSPECTIONS)
    ========================================================================== */
-function VehiclesPage({ role, vehicles, owners, onCreate }: { role: Role; vehicles: Vehicle[]; owners: Owner[]; onCreate: (body: Omit<Vehicle, 'id'> | (Omit<Vehicle, 'id' | 'owner_id'> & { owner_id?: number })) => Promise<void> }) {
+function VehiclesPage({
+  role,
+  vehicles,
+  owners,
+  onCreate,
+  onDelete,
+}: {
+  role: Role;
+  vehicles: Vehicle[];
+  owners: Owner[];
+  onCreate: (body: Omit<Vehicle, 'id'> | (Omit<Vehicle, 'id' | 'owner_id'> & { owner_id?: number })) => Promise<void>;
+  onDelete?: (id: number) => Promise<void>;
+}) {
   const [query, setQuery] = useState(''); const [open, setOpen] = useState(false)
   const isOwner = role === 'owner'
   const filtered = vehicles.filter(v => `${v.registration_number} ${v.chassis_number} ${v.engine_number} ${v.vehicle_type}`.toLowerCase().includes(query.toLowerCase()))
@@ -2877,6 +2903,7 @@ function VehiclesPage({ role, vehicles, owners, onCreate }: { role: Role; vehicl
                   <th>SỐ KHUNG</th>
                   <th>SỐ MÁY</th>
                   {!isOwner && <th>CHỦ XE</th>}
+                  {onDelete && !isOwner && <th style={{ textAlign: 'right' }}>THAO TÁC</th>}
                 </tr>
               </thead>
               <tbody>
@@ -2889,6 +2916,32 @@ function VehiclesPage({ role, vehicles, owners, onCreate }: { role: Role; vehicl
                     {!isOwner && (
                       <td className="vehicle-owner-cell">
                         <strong>{owners.find(o => o.id === v.owner_id)?.display_name ?? `Chủ xe #${v.owner_id}`}</strong>
+                      </td>
+                    )}
+                    {onDelete && !isOwner && (
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button
+                          type="button"
+                          className="button button-ghost button-sm"
+                          style={{
+                            color: '#dc2626',
+                            border: '1px solid #fecaca',
+                            backgroundColor: '#fef2f2',
+                            padding: '4px 12px',
+                            borderRadius: '6px',
+                            fontSize: '12.5px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => {
+                            if (window.confirm(`Bạn có chắc chắn muốn xóa phương tiện "${v.registration_number}"?`)) {
+                              void onDelete(v.id)
+                            }
+                          }}
+                          title="Xóa phương tiện"
+                        >
+                          Xóa
+                        </button>
                       </td>
                     )}
                   </tr>
@@ -2917,7 +2970,15 @@ function VehiclesPage({ role, vehicles, owners, onCreate }: { role: Role; vehicl
   </>
 }
 
-function OwnersPage({ owners, onCreate }: { owners: Owner[]; onCreate: (body: Omit<Owner, 'id'>) => Promise<void> }) {
+function OwnersPage({
+  owners,
+  onCreate,
+  onDelete,
+}: {
+  owners: Owner[];
+  onCreate: (body: Omit<Owner, 'id'>) => Promise<void>;
+  onDelete?: (id: number) => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const filtered = owners.filter(o => `${o.display_name} ${o.phone} ${o.identity_or_tax_number}`.toLowerCase().includes(query.toLowerCase()));
@@ -2960,6 +3021,7 @@ function OwnersPage({ owners, onCreate }: { owners: Owner[]; onCreate: (body: Om
                   <th>ĐỊNH DANH / MÃ SỐ THUẾ</th>
                   <th>SỐ ĐIỆN THOẠI</th>
                   <th>ĐỊA CHỈ</th>
+                  {onDelete && <th style={{ textAlign: 'right' }}>THAO TÁC</th>}
                 </tr>
               </thead>
               <tbody>
@@ -2974,6 +3036,32 @@ function OwnersPage({ owners, onCreate }: { owners: Owner[]; onCreate: (body: Om
                     <td><span className="mono owner-identity-code">{o.identity_or_tax_number}</span></td>
                     <td><span className="owner-phone">{o.phone}</span></td>
                     <td className="address-cell owner-address-cell">{o.address}</td>
+                    {onDelete && (
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button
+                          type="button"
+                          className="button button-ghost button-sm"
+                          style={{
+                            color: '#dc2626',
+                            border: '1px solid #fecaca',
+                            backgroundColor: '#fef2f2',
+                            padding: '4px 12px',
+                            borderRadius: '6px',
+                            fontSize: '12.5px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => {
+                            if (window.confirm(`Bạn có chắc chắn muốn xóa chủ xe "${o.display_name}"?`)) {
+                              void onDelete(o.id)
+                            }
+                          }}
+                          title="Xóa chủ xe"
+                        >
+                          Xóa
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

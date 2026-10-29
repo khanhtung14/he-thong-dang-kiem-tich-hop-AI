@@ -237,8 +237,10 @@ export function isTokenExpired(token: string): boolean {
 export const api = {
   owners: (token: string) => request<Owner[]>('/api/v1/owners', token),
   createOwner: (token: string, body: Omit<Owner, 'id'>) => request<Owner>('/api/v1/owners', token, { method: 'POST', body: JSON.stringify(body) }),
+  deleteOwner: (token: string, id: number) => request<{ message: string }>(`/api/v1/owners/${id}`, token, { method: 'DELETE' }),
   vehicles: (token: string) => request<Vehicle[]>('/api/v1/vehicles', token),
   createVehicle: (token: string, body: Omit<Vehicle, 'id'> | (Omit<Vehicle, 'id' | 'owner_id'> & { owner_id?: number })) => request<Vehicle>('/api/v1/vehicles', token, { method: 'POST', body: JSON.stringify(body) }),
+  deleteVehicle: (token: string, id: number) => request<{ message: string }>(`/api/v1/vehicles/${id}`, token, { method: 'DELETE' }),
   appointments: (token: string) => request<Appointment[]>('/api/v1/appointments', token),
   createAppointment: (token: string, body: Omit<Appointment, 'id' | 'code' | 'status'>) => request<Appointment>('/api/v1/appointments', token, { method: 'POST', body: JSON.stringify(body) }),
   cancelAppointment: (token: string, id: number) => request<Appointment>(`/api/v1/appointments/${id}/cancel`, token, { method: 'POST' }),

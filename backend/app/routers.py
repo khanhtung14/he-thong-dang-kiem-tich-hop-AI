@@ -41,7 +41,9 @@ ACTION_LABELS: dict[str, str] = {
     "reset_password": "Đặt lại mật khẩu",
     "update_profile": "Cập nhật hồ sơ",
     "create_owner": "Thêm chủ xe",
+    "delete_owner": "Xóa chủ xe",
     "create_vehicle": "Đăng ký phương tiện",
+    "delete_vehicle": "Xóa phương tiện",
     "create_appointment": "Đặt lịch hẹn",
     "cancel_appointment": "Hủy lịch hẹn",
     "create_inspection": "Tiếp nhận hồ sơ",
@@ -1057,6 +1059,31 @@ def list_owners(db: Session = Depends(get_db), _: Account = Depends(require_role
     return db.scalars(select(Owner).order_by(Owner.id)).all()
 
 
+@api.delete("/owners/{owner_id}")
+def delete_owner(owner_id: int, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE))):
+    owner = db.get(Owner, owner_id)
+    if owner is None:
+        raise HTTPException(404, "Không tìm thấy thông tin chủ xe.")
+    if owner.vehicles:
+        raise HTTPException(400, "Không thể xóa chủ xe này do đã có phương tiện đăng ký liên kết. Vui lòng chuyển hoặc xóa phương tiện trước.")
+    if owner.account:
+        raise HTTPException(400, "Không thể xóa chủ xe này do đang liên kết với tài khoản đăng nhập.")
+
+    display_name = owner.display_name
+    db.delete(owner)
+    db.commit()
+    log_audit_event(
+        db,
+        account.id,
+        entity_type="owner",
+        entity_id=owner_id,
+        action="delete_owner",
+        after_value=f"Xóa hồ sơ chủ xe {display_name}",
+    )
+    db.commit()
+    return {"message": f"Đã xóa chủ xe '{display_name}' thành công."}
+
+
 @api.post("/vehicles", response_model=VehicleRead, status_code=201)
 def create_vehicle(body: VehicleCreate, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE, Role.OWNER))):
     target_owner_id = body.owner_id
@@ -1095,6 +1122,31 @@ def list_vehicles(db: Session = Depends(get_db), account: Account = Depends(requ
     if account.role == Role.OWNER:
         query = query.where(Vehicle.owner_id == account.owner_id)
     return db.scalars(query).all()
+
+
+@api.delete("/vehicles/{vehicle_id}")
+def delete_vehicle(vehicle_id: int, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE))):
+    vehicle = db.get(Vehicle, vehicle_id)
+    if vehicle is None:
+        raise HTTPException(404, "Không tìm thấy thông tin phương tiện.")
+    if vehicle.inspections:
+        raise HTTPException(400, "Không thể xóa phương tiện đã có hồ sơ kiểm định.")
+    if vehicle.appointments:
+        raise HTTPException(400, "Không thể xóa phương tiện đã có lịch hẹn liên kết.")
+
+    plate = vehicle.registration_number
+    db.delete(vehicle)
+    db.commit()
+    log_audit_event(
+        db,
+        account.id,
+        entity_type="vehicle",
+        entity_id=vehicle_id,
+        action="delete_vehicle",
+        after_value=f"Xóa phương tiện {plate}",
+    )
+    db.commit()
+    return {"message": f"Đã xóa phương tiện '{plate}' thành công."}
 
 
 @api.post("/appointments", response_model=AppointmentRead, status_code=201)
@@ -1617,7 +1669,7 @@ def delete_account(
 ACTION_GROUPS: dict[str, list[str]] = {
     "group_appointment": ["create_appointment", "cancel_appointment"],
     "group_inspection": ["create_inspection", "record_result", "finalize_inspection", "issue_certificate", "administrative_correction"],
-    "group_vehicle_owner": ["create_vehicle", "create_owner"],
+    "group_vehicle_owner": ["create_vehicle", "create_owner", "delete_owner", "delete_vehicle"],
     "group_account": ["login", "register", "create_account", "update_role", "lock_account", "unlock_account", "reset_password"],
 }
 
