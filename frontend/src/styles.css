@@ -704,7 +704,7 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
+  padding: 12px 64px 12px 20px;
   border-top: 1px solid #e2e8f0;
   background: #ffffff;
   border-radius: 0 0 14px 14px;
