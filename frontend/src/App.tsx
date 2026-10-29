@@ -1281,25 +1281,13 @@ function AdminOverview({
         className="panel"
         style={{
           marginBottom: 14,
-          padding: '10px 14px',
+          padding: 10,
           background: '#ffffff',
           borderRadius: 12,
           border: '1px solid #e2e8f0',
           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingBottom: 6, borderBottom: '1px solid #f1f5f9' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#3b82f6' }} />
-            <span style={{ fontSize: '13px', color: '#1e293b', fontWeight: 700 }}>
-              Tiến trình luân chuyển hồ sơ toàn trung tâm
-            </span>
-          </div>
-          <span style={{ fontSize: '11.5px', color: '#64748b' }}>
-            Phân bổ số lượng theo giai đoạn xử lý
-          </span>
-        </div>
-
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
           {/* Stage 1: Tiếp nhận */}
           <div
