@@ -63,6 +63,13 @@ function getPagesForRole(role: Role): { id: Page; label: string; icon: string }[
   ]
 }
 
+function getLocalDateString(date: Date = new Date()): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function App() {
   const [session, setSession] = useState<Session | null>(() => {
     let value = sessionStorage.getItem('inspection-session')
@@ -655,11 +662,11 @@ function InspectionTestingPage({
   // Certificate form controlled states (with auto-generation)
   const [certNumber, setCertNumber] = useState(() => generateCertCode())
   const [stampNumber, setStampNumber] = useState(() => generateStampCode())
-  const [issuedDate, setIssuedDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [issuedDate, setIssuedDate] = useState(() => getLocalDateString())
   const [expiryDate, setExpiryDate] = useState(() => {
     const d = new Date()
     d.setFullYear(d.getFullYear() + 1)
-    return d.toISOString().slice(0, 10)
+    return getLocalDateString(d)
   })
 
   // Technical Stage Presets
@@ -1070,7 +1077,7 @@ function InspectionTestingPage({
                         if (val) {
                           const d = new Date(val)
                           d.setFullYear(d.getFullYear() + 1)
-                          setExpiryDate(d.toISOString().slice(0, 10))
+                          setExpiryDate(getLocalDateString(d))
                         }
                       }}
                     />
@@ -1267,7 +1274,7 @@ function AdminOverview({
   session?: Session; owners?: Owner[]; vehicles: Vehicle[]; appointments: Appointment[]; inspections: Inspection[];
   navigate: (p: Page) => void; onOpenDetail: (i: Inspection) => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getLocalDateString()
   const todayAppointments = appointments.filter(i => i.appointment_date === today && i.status === 'active')
   const passed = inspections.filter(i => i.status === 'passed').length
   const failed = inspections.filter(i => i.status === 'failed').length
@@ -1643,7 +1650,7 @@ function IntakeOverview({
   onOpenAppointmentModal: () => void;
   onCancelAppointment: (id: number) => Promise<void>;
 }) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getLocalDateString()
   const currentHour = new Date().getHours()
   const isMorning = currentHour < 12
   const todayAppointments = appointments.filter(a => a.appointment_date === today)
@@ -1700,7 +1707,12 @@ function IntakeOverview({
             <h3>Khách hẹn hôm nay cần đón tiếp ({activeTodayApt.length})</h3>
             <p>Đối chiếu biển số xe và bấm "Tiếp nhận ngay" khi khách có mặt tại quầy</p>
           </div>
-          <button className="button button-outline button-sm" onClick={onOpenAppointmentModal}>Thêm lịch hẹn</button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="button button-outline button-sm" onClick={() => navigate('appointments')}>
+              Xem tất cả lịch hẹn ({appointments.length})
+            </button>
+            <button className="button button-outline button-sm" onClick={onOpenAppointmentModal}>Thêm lịch hẹn</button>
+          </div>
         </div>
         {activeTodayApt.length ? (
           <div className="table-wrap">
@@ -1797,7 +1809,7 @@ function InspectorOverview({
   navigate: (p: Page) => void;
   onOpenDetail: (inspection: Inspection) => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getLocalDateString()
   const todayAptCount = appointments.filter(a => a.appointment_date === today && a.status === 'active').length
   const inProgress = inspections.filter(i => i.status === 'in_progress')
   const waitingTest = inspections.filter(i => i.status === 'received')
@@ -4034,7 +4046,15 @@ function StatusBadge({ value }: { value: string }) { const tone = ['active', 'pa
 function Empty({ title, detail }: { title: string; detail: string }) { return <div className="empty-state"><strong>{title}</strong><p>{detail}</p></div> }
 function DetailField({ label, value }: { label: string; value?: string | null }) { return <div className="detail-field"><small>{label}</small><strong>{value || '—'}</strong></div> }
 function vehicleLabel(vehicles: Vehicle[], id: number) { return vehicles.find(v => v.id === id)?.registration_number ?? `Phương tiện #${id}` }
-function formatDate(value: string) { const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date) }
+function formatDate(value: string) {
+  if (!value) return '—';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
+}
 function serviceName(value: string) { return ({ periodic: 'Kiểm định định kỳ', new_registration: 'Đăng ký xe mới', information_change: 'Thay đổi thông tin' } as Record<string, string>)[value] ?? value }
 function channelName(value: string) { return ({ counter: 'Tại quầy', postal: 'Bưu chính', online: 'Trực tuyến' } as Record<string, string>)[value] ?? value }
 
@@ -4253,7 +4273,7 @@ function AppointmentModal({
             name="date"
             type="date"
             required
-            min={new Date().toISOString().slice(0, 10)}
+            min={getLocalDateString()}
             disabled={!hasOwnerSelected}
           />
         </Field>
