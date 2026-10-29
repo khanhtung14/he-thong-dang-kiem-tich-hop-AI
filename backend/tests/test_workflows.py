@@ -509,12 +509,29 @@ class WorkflowTests(unittest.TestCase):
                     display_name="Nguyen Van A",
                     email="invalid-email",
                     phone="0911222333",
+                    identity_or_tax_number="001201012345",
                 ),
                 db=self.db
             )
         self.assertEqual(ctx.exception.status_code, 400)
 
-        # 2. Register with valid required email succeeds
+        # 1b. Register without identity_or_tax_number raises 400
+        with self.assertRaises(HTTPException) as ctx_id:
+            register(
+                RegisterRequest(
+                    username="new_owner_1",
+                    password="password123",
+                    display_name="Nguyen Van A",
+                    email="owner1@example.com",
+                    phone="0911222333",
+                    identity_or_tax_number="",
+                ),
+                db=self.db
+            )
+        self.assertEqual(ctx_id.exception.status_code, 400)
+        self.assertIn("số CCCD hoặc Mã số thuế", ctx_id.exception.detail)
+
+        # 2. Register with valid required email and identity succeeds
         res = register(
             RegisterRequest(
                 username="new_owner_1",
@@ -522,6 +539,7 @@ class WorkflowTests(unittest.TestCase):
                 display_name="Nguyen Van A",
                 email="owner1@example.com",
                 phone="0911222333",
+                identity_or_tax_number="001201012345",
             ),
             db=self.db
         )
@@ -542,6 +560,7 @@ class WorkflowTests(unittest.TestCase):
                     display_name="Nguyen Van B",
                     email="owner1@example.com",
                     phone="0988777666",
+                    identity_or_tax_number="001201012346",
                 ),
                 db=self.db
             )

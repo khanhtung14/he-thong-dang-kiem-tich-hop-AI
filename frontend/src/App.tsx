@@ -2266,6 +2266,11 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
       setBusy(false)
       return
     }
+    if (!identity.trim()) {
+      setError('Vui lòng nhập số CCCD hoặc Mã số thuế.')
+      setBusy(false)
+      return
+    }
     try {
       const session = await apiRegister({
         username: username.trim(),
@@ -2273,7 +2278,7 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
         display_name: displayName.trim(),
         email: regEmail.trim().toLowerCase(),
         phone: phone.trim(),
-        identity_or_tax_number: identity.trim() || undefined,
+        identity_or_tax_number: identity.trim(),
         address: address.trim() || undefined,
       })
       onLogin(session)
@@ -2789,12 +2794,13 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
 
                 <div className="form-row-two">
                   <label>
-                    Số CCCD / Mã số thuế
+                    Số CCCD / Mã số thuế *
                     <div className="input-wrap">
                       <input
                         value={identity}
                         onChange={e => setIdentity(e.target.value)}
-                        placeholder="Không bắt buộc"
+                        placeholder="VD: 001201012345 hoặc MST"
+                        required
                       />
                     </div>
                   </label>

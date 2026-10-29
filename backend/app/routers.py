@@ -755,7 +755,10 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
     clean_identity = (body.identity_or_tax_number or "").strip()
     if not clean_identity:
-        clean_identity = f"ID-{clean_username}"
+        raise HTTPException(
+            status_code=400,
+            detail="Vui lòng nhập số CCCD hoặc Mã số thuế của chủ xe.",
+        )
 
     owner = Owner(
         display_name=body.display_name.strip(),

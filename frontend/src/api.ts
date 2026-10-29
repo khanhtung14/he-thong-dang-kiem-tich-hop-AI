@@ -135,7 +135,7 @@ export type RegisterData = {
   display_name: string
   email: string
   phone: string
-  identity_or_tax_number?: string
+  identity_or_tax_number: string
   address?: string
 }
 
