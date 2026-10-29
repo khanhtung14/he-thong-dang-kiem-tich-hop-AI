@@ -2,6 +2,7 @@ from app.email_service import send_otp_email
 from datetime import date, datetime, time, timezone, timedelta
 import logging
 import random
+import re
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
