@@ -293,9 +293,10 @@ function App() {
               key={item.id}
               className={`nav-item ${page === item.id ? 'nav-active' : ''}`}
               onClick={() => { navigate(item.id); setMobileNav(false) }}
+              title={item.label}
             >
               {item.icon ? <span className="nav-icon">{item.icon}</span> : null}
-              {item.label}
+              <span className="nav-text">{item.label}</span>
               {page === item.id && <span className="nav-current"/>}
             </button>
           ))}

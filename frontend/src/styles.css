@@ -164,15 +164,17 @@ button:disabled {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   border: 0;
   background: transparent;
   text-align: left;
   color: #475569;
   border-radius: 10px;
-  padding: 11px 14px;
+  padding: 10px 12px;
   font-size: 13.5px;
   font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
   transition: all 0.18s ease;
 }
 
@@ -189,9 +191,18 @@ button:disabled {
   box-shadow: 0 4px 14px rgba(37, 99, 235, 0.28);
 }
 
+.nav-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .nav-icon {
   font-size: 16px;
-  width: 22px;
+  width: 20px;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -209,6 +220,7 @@ button:disabled {
 
 .nav-current {
   margin-left: auto;
+  flex-shrink: 0;
   width: 6px;
   height: 6px;
   background: #ffffff;
@@ -2459,8 +2471,8 @@ input[type="password"]::-ms-clear {
 
 /* Responsive Media Queries */
 @media(max-width: 1200px) {
-  .sidebar { width: 240px; padding: 18px 12px 14px; }
-  .main-area { margin-left: 240px; }
+  .sidebar { width: 250px; padding: 18px 12px 14px; }
+  .main-area { margin-left: 250px; }
   .content { padding: 16px 16px 30px; }
   .topbar { padding: 0 16px; }
   .stat-grid { gap: 10px; }
