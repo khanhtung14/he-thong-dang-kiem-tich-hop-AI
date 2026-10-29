@@ -556,6 +556,7 @@ function App() {
       {openGlobalIntakeModal && (
         <InspectionModal
           vehicles={vehicles}
+          owners={owners}
           defaultVehicleId={preselectedVehicleId}
           onClose={() => { setOpenGlobalIntakeModal(false); setPreselectedVehicleId(undefined) }}
           onSubmit={async body => {
@@ -3940,7 +3941,7 @@ function InspectionsPage({
         <Empty title="Chưa có hồ sơ kiểm định" detail="Tiếp nhận hồ sơ mới để bắt đầu theo dõi."/>
       )}
     </section>
-    {open && <InspectionModal vehicles={vehicles} onClose={() => setOpen(false)} onSubmit={async body => { await runAction(() => api.createInspection(token, body), 'Đã tiếp nhận hồ sơ.'); setOpen(false) }}/>}
+    {open && <InspectionModal vehicles={vehicles} owners={owners} onClose={() => setOpen(false)} onSubmit={async body => { await runAction(() => api.createInspection(token, body), 'Đã tiếp nhận hồ sơ.'); setOpen(false) }}/>}
     {!onOpenDetail && selected && (
       <InspectionDetail
         inspection={selected}
@@ -4328,12 +4329,54 @@ function AppointmentModal({
   );
 }
 
-function InspectionModal({ vehicles, onClose, onSubmit, defaultVehicleId }: { vehicles: Vehicle[]; onClose: () => void; onSubmit: (body: Pick<Inspection, 'vehicle_id' | 'inspection_type' | 'intake_channel' | 'old_certificate_management_number' | 'registration_document_number' | 'insurance_contract_number' | 'insurance_expiry'>) => Promise<void>; defaultVehicleId?: number }) {
+function InspectionModal({
+  vehicles,
+  owners = [],
+  onClose,
+  onSubmit,
+  defaultVehicleId
+}: {
+  vehicles: Vehicle[];
+  owners?: Owner[];
+  onClose: () => void;
+  onSubmit: (body: Pick<Inspection, 'vehicle_id' | 'inspection_type' | 'intake_channel' | 'old_certificate_management_number' | 'registration_document_number' | 'insurance_contract_number' | 'insurance_expiry'>) => Promise<void>;
+  defaultVehicleId?: number;
+}) {
+  const initialOwnerId = useMemo(() => {
+    if (defaultVehicleId) {
+      const v = vehicles.find(veh => veh.id === defaultVehicleId);
+      return v ? v.owner_id : '';
+    }
+    return '';
+  }, [defaultVehicleId, vehicles]);
+
+  const [selectedOwnerId, setSelectedOwnerId] = useState<number | ''>(initialOwnerId);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<number | ''>(defaultVehicleId || '');
   const [error, setError] = useState('');
   const [kind, setKind] = useState<'periodic' | 'first'>('periodic');
   const [oldCert, setOldCert] = useState('');
   const [oldCertError, setOldCertError] = useState('');
   const [touched, setTouched] = useState(false);
+
+  const hasOwnerSelected = !!selectedOwnerId;
+
+  const availableVehicles = useMemo(() => {
+    if (!selectedOwnerId) return [];
+    return vehicles.filter(v => v.owner_id === Number(selectedOwnerId));
+  }, [vehicles, selectedOwnerId]);
+
+  // Khi chọn chủ xe, tự động chọn xe nếu chủ xe chỉ có 1 xe duy nhất
+  useEffect(() => {
+    if (hasOwnerSelected) {
+      if (availableVehicles.length === 1) {
+        setSelectedVehicleId(availableVehicles[0].id);
+      } else if (!availableVehicles.some(v => v.id === selectedVehicleId)) {
+        setSelectedVehicleId('');
+      }
+    } else {
+      setSelectedVehicleId('');
+    }
+  }, [hasOwnerSelected, availableVehicles]);
 
   function validateOldCertInput(value: string, currentKind: 'periodic' | 'first'): string {
     const trimmed = value.trim().toUpperCase();
@@ -4374,8 +4417,21 @@ function InspectionModal({ vehicles, onClose, onSubmit, defaultVehicleId }: { ve
   }
 
   async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     setError('');
+
+    if (!selectedOwnerId) {
+      setError('Vui lòng chọn chủ xe trong hệ thống trước.');
+      return;
+    }
+
     const f = new FormData(e.currentTarget);
+    const vehicleId = Number(f.get('vehicle')) || Number(selectedVehicleId);
+    if (!vehicleId) {
+      setError('Vui lòng chọn phương tiện để tiếp nhận hồ sơ.');
+      return;
+    }
+
     const validationMsg = validateOldCertInput(oldCert, kind);
     setTouched(true);
     if (validationMsg) {
@@ -4387,9 +4443,9 @@ function InspectionModal({ vehicles, onClose, onSubmit, defaultVehicleId }: { ve
 
     try {
       await onSubmit({
-        vehicle_id: Number(f.get('vehicle')),
+        vehicle_id: vehicleId,
         inspection_type: kind,
-        intake_channel: String(f.get('channel')),
+        intake_channel: String(f.get('channel') || 'counter'),
         old_certificate_management_number: oldCert.trim() ? oldCert.trim().toUpperCase() : null,
         registration_document_number: String(f.get('document') || '').trim() || null,
         insurance_contract_number: String(f.get('insurance') || '').trim() || null,
@@ -4401,22 +4457,69 @@ function InspectionModal({ vehicles, onClose, onSubmit, defaultVehicleId }: { ve
   }
 
   return (
-    <Modal title="Tiếp nhận hồ sơ" subtitle="Ghi nhận thông tin tiếp nhận ban đầu của phương tiện." onClose={onClose} onSubmit={submit}>
+    <Modal
+      title="Tiếp nhận hồ sơ"
+      subtitle={!selectedOwnerId ? 'Vui lòng chọn chủ xe trước để mở khóa chọn phương tiện và các thông tin hồ sơ.' : 'Ghi nhận thông tin tiếp nhận ban đầu của phương tiện.'}
+      onClose={onClose}
+      onSubmit={submit}
+      submitDisabled={!hasOwnerSelected || !selectedVehicleId}
+    >
       <div className="form-grid">
+        <Field label="Chủ xe" required>
+          <select
+            name="owner"
+            required
+            value={selectedOwnerId}
+            onChange={e => {
+              const val = e.target.value ? Number(e.target.value) : '';
+              setSelectedOwnerId(val);
+            }}
+          >
+            <option value="">-- Chọn chủ xe trong hệ thống --</option>
+            {owners.map(o => (
+              <option key={o.id} value={o.id}>
+                {o.display_name} ({o.identity_or_tax_number}) · SĐT: {o.phone}
+              </option>
+            ))}
+          </select>
+        </Field>
         <Field label="Phương tiện" required>
-          <select name="vehicle" required defaultValue={defaultVehicleId ? String(defaultVehicleId) : ""}>
-            <option value="" disabled>Chọn phương tiện</option>
-            {vehicles.map(v => <option key={v.id} value={v.id}>{v.registration_number} · {v.vehicle_type}</option>)}
+          <select
+            name="vehicle"
+            required
+            value={selectedVehicleId}
+            onChange={e => setSelectedVehicleId(e.target.value ? Number(e.target.value) : '')}
+            disabled={!hasOwnerSelected || availableVehicles.length === 0}
+          >
+            {!hasOwnerSelected ? (
+              <option value="">-- Vui lòng chọn chủ xe trước --</option>
+            ) : availableVehicles.length === 0 ? (
+              <option value="">Chủ xe này chưa có phương tiện nào</option>
+            ) : (
+              <>
+                <option value="">-- Chọn phương tiện --</option>
+                {availableVehicles.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.registration_number} · {v.vehicle_type}
+                  </option>
+                ))}
+              </>
+            )}
           </select>
         </Field>
         <Field label="Loại kiểm định" required>
-          <select name="kind" value={kind} onChange={e => handleKindChange(e.target.value as 'periodic' | 'first')}>
+          <select
+            name="kind"
+            value={kind}
+            onChange={e => handleKindChange(e.target.value as 'periodic' | 'first')}
+            disabled={!hasOwnerSelected}
+          >
             <option value="periodic">Định kỳ (bắt buộc số GCN cũ)</option>
             <option value="first">Lần đầu (không bắt buộc số GCN cũ)</option>
           </select>
         </Field>
         <Field label="Kênh tiếp nhận" required>
-          <select name="channel">
+          <select name="channel" disabled={!hasOwnerSelected}>
             <option value="counter">Tại quầy</option>
             <option value="postal">Bưu chính</option>
             <option value="online">Trực tuyến</option>
@@ -4434,8 +4537,15 @@ function InspectionModal({ vehicles, onClose, onSubmit, defaultVehicleId }: { ve
             value={oldCert}
             onChange={e => handleOldCertChange(e.target.value)}
             onBlur={handleOldCertBlur}
+            disabled={!hasOwnerSelected}
             maxLength={30}
-            placeholder={kind === 'periodic' ? "Ví dụ: KD-1234567 hoặc 2901S-123456" : "Để trống nếu xe kiểm định lần đầu"}
+            placeholder={
+              !hasOwnerSelected
+                ? 'Vui lòng chọn chủ xe trước'
+                : kind === 'periodic'
+                ? "Ví dụ: KD-1234567 hoặc 2901S-123456"
+                : "Để trống nếu xe kiểm định lần đầu"
+            }
             style={{
               textTransform: 'uppercase',
               borderColor: oldCertError ? '#ef4444' : undefined,
@@ -4454,10 +4564,34 @@ function InspectionModal({ vehicles, onClose, onSubmit, defaultVehicleId }: { ve
             </div>
           )}
         </div>
-        <Field label="Số seri đăng ký / giấy hẹn"><input name="document" placeholder="Ví dụ: 123456 hoặc GH-999"/></Field>
-        <Field label="Số hợp đồng bảo hiểm TNDS"><input name="insurance" placeholder="Ví dụ: BH-2024-888999"/></Field>
-        <Field label="Ngày hết hạn bảo hiểm"><input name="expiry" type="date"/></Field>
+        <Field label="Số seri đăng ký / giấy hẹn">
+          <input
+            name="document"
+            placeholder={!hasOwnerSelected ? "Vui lòng chọn chủ xe trước" : "Ví dụ: 123456 hoặc GH-999"}
+            disabled={!hasOwnerSelected}
+          />
+        </Field>
+        <Field label="Số hợp đồng bảo hiểm TNDS">
+          <input
+            name="insurance"
+            placeholder={!hasOwnerSelected ? "Vui lòng chọn chủ xe trước" : "Ví dụ: BH-2024-888999"}
+            disabled={!hasOwnerSelected}
+          />
+        </Field>
+        <Field label="Ngày hết hạn bảo hiểm">
+          <input name="expiry" type="date" disabled={!hasOwnerSelected}/>
+        </Field>
       </div>
+      {!hasOwnerSelected && (
+        <div style={{ marginTop: '14px', padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', color: '#1d4ed8', fontSize: '13px' }}>
+          💡 <strong>Bước 1:</strong> Vui lòng chọn chủ xe có trong hệ thống để mở khóa chọn phương tiện và thông tin hồ sơ kiểm định.
+        </div>
+      )}
+      {hasOwnerSelected && availableVehicles.length === 0 && (
+        <div style={{ marginTop: '14px', padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', color: '#b45309', fontSize: '13px' }}>
+          ⚠️ Chủ xe được chọn hiện chưa có phương tiện nào trong hệ thống. Vui lòng thêm phương tiện cho chủ xe này trước khi tiếp nhận hồ sơ.
+        </div>
+      )}
       {error && <div className="form-error">{error}</div>}
     </Modal>
   );
