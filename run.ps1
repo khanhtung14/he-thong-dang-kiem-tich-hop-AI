@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $pythonExe = Join-Path $projectRoot 'backend\.venv\Scripts\python.exe'
 $npmCommand = (Get-Command npm.cmd -ErrorAction Stop).Source

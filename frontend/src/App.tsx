@@ -1142,6 +1142,101 @@ function InspectionTestingPage({
 }
 
 /* ==========================================================================
+   REUSABLE TABLE PAGINATION BAR
+   ========================================================================== */
+function TablePagination({
+  currentPage,
+  totalItems,
+  pageSize = 10,
+  onPageChange,
+  itemName = 'mục',
+}: {
+  currentPage: number
+  totalItems: number
+  pageSize?: number
+  onPageChange: (page: number) => void
+  itemName?: string
+}) {
+  const totalPages = Math.ceil(totalItems / pageSize) || 1
+  if (totalItems === 0) return null
+
+  const startItem = (currentPage - 1) * pageSize + 1
+  const endItem = Math.min(currentPage * pageSize, totalItems)
+
+  const pages: (number | string)[] = Array.from({ length: totalPages }, (_, idx) => idx + 1)
+    .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+    .reduce<(number | string)[]>((acc, p, i, arr) => {
+      if (i > 0 && p - (arr[i - 1] as number) > 1) {
+        acc.push('...')
+      }
+      acc.push(p)
+      return acc
+    }, [])
+
+  return (
+    <div className="table-pagination-bar">
+      <div className="table-pagination-info">
+        Hiển thị <strong>{startItem}</strong> - <strong>{endItem}</strong> trên tổng số <strong>{totalItems}</strong> {itemName}
+      </div>
+      <div className="table-pagination-controls">
+        <button
+          type="button"
+          className="pagination-btn"
+          disabled={currentPage <= 1}
+          onClick={() => onPageChange(1)}
+          title="Trang đầu"
+        >
+          «
+        </button>
+        <button
+          type="button"
+          className="pagination-btn"
+          disabled={currentPage <= 1}
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          title="Trang trước"
+        >
+          ‹ Trước
+        </button>
+
+        {pages.map((p, idx) =>
+          p === '...' ? (
+            <span key={`ellipsis-${idx}`} className="pagination-ellipsis">…</span>
+          ) : (
+            <button
+              key={`page-${p}`}
+              type="button"
+              className={`pagination-btn ${p === currentPage ? 'active' : ''}`}
+              onClick={() => onPageChange(p as number)}
+            >
+              {p}
+            </button>
+          )
+        )}
+
+        <button
+          type="button"
+          className="pagination-btn"
+          disabled={currentPage >= totalPages}
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          title="Trang sau"
+        >
+          Sau ›
+        </button>
+        <button
+          type="button"
+          className="pagination-btn"
+          disabled={currentPage >= totalPages}
+          onClick={() => onPageChange(totalPages)}
+          title="Trang cuối"
+        >
+          »
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ==========================================================================
    ROLE WORKSPACE 1: QUẢN TRỊ VIÊN (ADMIN DASHBOARD)
    ========================================================================== */
 function AdminOverview({
@@ -1289,74 +1384,13 @@ function AdminOverview({
             </div>
 
             {/* Pagination Controls */}
-            <div className="table-pagination-bar">
-              <div className="table-pagination-info">
-                Hiển thị <strong>{(currentPage - 1) * pageSize + 1}</strong> - <strong>{Math.min(currentPage * pageSize, sortedInspections.length)}</strong> trên tổng số <strong>{sortedInspections.length}</strong> hồ sơ
-              </div>
-              <div className="table-pagination-controls">
-                <button
-                  type="button"
-                  className="pagination-btn"
-                  disabled={currentPage <= 1}
-                  onClick={() => setCurrentPage(1)}
-                  title="Trang đầu"
-                >
-                  «
-                </button>
-                <button
-                  type="button"
-                  className="pagination-btn"
-                  disabled={currentPage <= 1}
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  title="Trang trước"
-                >
-                  ‹ Trước
-                </button>
-
-                {Array.from({ length: totalPages }, (_, idx) => idx + 1)
-                  .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
-                  .reduce<(number | string)[]>((acc, p, i, arr) => {
-                    if (i > 0 && p - (arr[i - 1] as number) > 1) {
-                      acc.push('...')
-                    }
-                    acc.push(p)
-                    return acc
-                  }, [])
-                  .map((p, idx) =>
-                    p === '...' ? (
-                      <span key={`ellipsis-${idx}`} className="pagination-ellipsis">…</span>
-                    ) : (
-                      <button
-                        key={`page-${p}`}
-                        type="button"
-                        className={`pagination-btn ${p === currentPage ? 'active' : ''}`}
-                        onClick={() => setCurrentPage(p as number)}
-                      >
-                        {p}
-                      </button>
-                    )
-                  )}
-
-                <button
-                  type="button"
-                  className="pagination-btn"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  title="Trang sau"
-                >
-                  Sau ›
-                </button>
-                <button
-                  type="button"
-                  className="pagination-btn"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setCurrentPage(totalPages)}
-                  title="Trang cuối"
-                >
-                  »
-                </button>
-              </div>
-            </div>
+            <TablePagination
+              currentPage={currentPage}
+              totalItems={sortedInspections.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              itemName="hồ sơ"
+            />
           </>
         ) : (
           <Empty title="Chưa có hồ sơ kiểm định" detail="Hồ sơ mới sẽ xuất hiện tại đây khi được tiếp nhận." />
@@ -2728,6 +2762,26 @@ function VehiclesPage({ role, vehicles, owners, onCreate }: { role: Role; vehicl
   const [query, setQuery] = useState(''); const [open, setOpen] = useState(false)
   const isOwner = role === 'owner'
   const filtered = vehicles.filter(v => `${v.registration_number} ${v.chassis_number} ${v.engine_number} ${v.vehicle_type}`.toLowerCase().includes(query.toLowerCase()))
+
+  // Pagination: 10 items per page
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [query]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [currentPage, totalPages]);
+
   return <>
     <PageHeading
       eyebrow={isOwner ? "QUẢN LÝ PHƯƠNG TIỆN" : "DỮ LIỆU NỀN"}
@@ -2743,34 +2797,45 @@ function VehiclesPage({ role, vehicles, owners, onCreate }: { role: Role; vehicl
     </div>
     <section className="panel list-panel vehicles-panel">
       {filtered.length ? (
-        <div className="table-wrap">
-          <table className="vehicles-table">
-            <thead>
-              <tr>
-                <th>BIỂN SỐ</th>
-                <th>LOẠI PHƯƠNG TIỆN</th>
-                <th>SỐ KHUNG</th>
-                <th>SỐ MÁY</th>
-                {!isOwner && <th>CHỦ XE</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(v => (
-                <tr key={v.id}>
-                  <td><span className="plate plate-large">{v.registration_number}</span></td>
-                  <td className="vehicle-type-cell">{v.vehicle_type}</td>
-                  <td><span className="mono vehicle-code-cell">{v.chassis_number}</span></td>
-                  <td><span className="mono vehicle-code-cell">{v.engine_number}</span></td>
-                  {!isOwner && (
-                    <td className="vehicle-owner-cell">
-                      <strong>{owners.find(o => o.id === v.owner_id)?.display_name ?? `Chủ xe #${v.owner_id}`}</strong>
-                    </td>
-                  )}
+        <>
+          <div className="table-wrap">
+            <table className="vehicles-table">
+              <thead>
+                <tr>
+                  <th>BIỂN SỐ</th>
+                  <th>LOẠI PHƯƠNG TIỆN</th>
+                  <th>SỐ KHUNG</th>
+                  <th>SỐ MÁY</th>
+                  {!isOwner && <th>CHỦ XE</th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {paginated.map(v => (
+                  <tr key={v.id}>
+                    <td><span className="plate plate-large">{v.registration_number}</span></td>
+                    <td className="vehicle-type-cell">{v.vehicle_type}</td>
+                    <td><span className="mono vehicle-code-cell">{v.chassis_number}</span></td>
+                    <td><span className="mono vehicle-code-cell">{v.engine_number}</span></td>
+                    {!isOwner && (
+                      <td className="vehicle-owner-cell">
+                        <strong>{owners.find(o => o.id === v.owner_id)?.display_name ?? `Chủ xe #${v.owner_id}`}</strong>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <TablePagination
+            currentPage={currentPage}
+            totalItems={filtered.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            itemName="phương tiện"
+          />
+        </>
       ) : (
         <Empty
           title="Không tìm thấy phương tiện"
@@ -2786,6 +2851,26 @@ function OwnersPage({ owners, onCreate }: { owners: Owner[]; onCreate: (body: Om
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const filtered = owners.filter(o => `${o.display_name} ${o.phone} ${o.identity_or_tax_number}`.toLowerCase().includes(query.toLowerCase()));
+
+  // Pagination: 10 items per page
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [query]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [currentPage, totalPages]);
+
   return <>
     <PageHeading eyebrow="DỮ LIỆU NỀN" title="Chủ xe" description="Quản lý thông tin chủ xe đã được tiếp nhận." action={<button className="button button-primary" onClick={() => setOpen(true)}>＋ Thêm chủ xe</button>}/>
     <div className="toolbar">
@@ -2796,33 +2881,44 @@ function OwnersPage({ owners, onCreate }: { owners: Owner[]; onCreate: (body: Om
     </div>
     <section className="panel list-panel owners-panel">
       {filtered.length ? (
-        <div className="table-wrap">
-          <table className="owners-table">
-            <thead>
-              <tr>
-                <th>CHỦ XE</th>
-                <th>ĐỊNH DANH / MÃ SỐ THUẾ</th>
-                <th>SỐ ĐIỆN THOẠI</th>
-                <th>ĐỊA CHỈ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(o => (
-                <tr key={o.id}>
-                  <td>
-                    <div className="person-cell person-cell-large">
-                      <span className="person-avatar person-avatar-large">{o.display_name.slice(0, 1).toUpperCase()}</span>
-                      <strong className="person-name">{o.display_name}</strong>
-                    </div>
-                  </td>
-                  <td><span className="mono owner-identity-code">{o.identity_or_tax_number}</span></td>
-                  <td><span className="owner-phone">{o.phone}</span></td>
-                  <td className="address-cell owner-address-cell">{o.address}</td>
+        <>
+          <div className="table-wrap">
+            <table className="owners-table">
+              <thead>
+                <tr>
+                  <th>CHỦ XE</th>
+                  <th>ĐỊNH DANH / MÃ SỐ THUẾ</th>
+                  <th>SỐ ĐIỆN THOẠI</th>
+                  <th>ĐỊA CHỈ</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {paginated.map(o => (
+                  <tr key={o.id}>
+                    <td>
+                      <div className="person-cell person-cell-large">
+                        <span className="person-avatar person-avatar-large">{o.display_name.slice(0, 1).toUpperCase()}</span>
+                        <strong className="person-name">{o.display_name}</strong>
+                      </div>
+                    </td>
+                    <td><span className="mono owner-identity-code">{o.identity_or_tax_number}</span></td>
+                    <td><span className="owner-phone">{o.phone}</span></td>
+                    <td className="address-cell owner-address-cell">{o.address}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <TablePagination
+            currentPage={currentPage}
+            totalItems={filtered.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            itemName="chủ xe"
+          />
+        </>
       ) : (
         <Empty title="Chưa có dữ liệu chủ xe" detail="Tạo hồ sơ chủ xe để liên kết phương tiện."/>
       )}
@@ -2839,6 +2935,26 @@ function AppointmentsPage({ role, vehicles, appointments, onCreate, onCancel }: 
     const veh = vehicles.find(v => v.id === a.vehicle_id);
     return `${a.code} ${a.service_type} ${veh?.registration_number ?? ''}`.toLowerCase().includes(query.toLowerCase());
   });
+
+  // Pagination: 10 items per page
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [query]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [currentPage, totalPages]);
+
   return <>
     <PageHeading eyebrow="ĐIỀU PHỐI TIẾP NHẬN" title="Lịch hẹn đăng kiểm" description="Sắp xếp khung giờ kiểm định đảm bảo năng lực phục vụ của trung tâm." action={canCreate ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Tạo lịch hẹn</button> : undefined}/>
     <div className="toolbar">
@@ -2849,38 +2965,49 @@ function AppointmentsPage({ role, vehicles, appointments, onCreate, onCancel }: 
     </div>
     <section className="panel list-panel appointments-panel">
       {filtered.length ? (
-        <div className="table-wrap">
-          <table className="appointments-table">
-            <thead>
-              <tr>
-                <th>MÃ LỊCH HẸN</th>
-                <th>PHƯƠNG TIỆN</th>
-                <th>NGÀY HẸN</th>
-                <th>KHUNG GIỜ</th>
-                <th>DỊCH VỤ</th>
-                <th>TRẠNG THÁI</th>
-                <th>THAO TÁC</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(a => (
-                <tr key={a.id}>
-                  <td><strong className="mono appointment-code">{a.code}</strong></td>
-                  <td><span className="plate plate-large">{vehicleLabel(vehicles, a.vehicle_id)}</span></td>
-                  <td className="appointment-date-cell">{formatDate(a.appointment_date)}</td>
-                  <td><span className="time-badge">{a.start_time.slice(0, 5)} - {a.end_time.slice(0, 5)}</span></td>
-                  <td>{serviceName(a.service_type)}</td>
-                  <td><StatusBadge value={a.status}/></td>
-                  <td>
-                    {a.status === 'active' && ['admin', 'intake', 'owner'].includes(role) ? (
-                      <button className="button button-ghost button-sm cancel-action-btn" onClick={() => void onCancel(a.id)}>Hủy hẹn</button>
-                    ) : <span className="text-muted">—</span>}
-                  </td>
+        <>
+          <div className="table-wrap">
+            <table className="appointments-table">
+              <thead>
+                <tr>
+                  <th>MÃ LỊCH HẸN</th>
+                  <th>PHƯƠNG TIỆN</th>
+                  <th>NGÀY HẸN</th>
+                  <th>KHUNG GIỜ</th>
+                  <th>DỊCH VỤ</th>
+                  <th>TRẠNG THÁI</th>
+                  <th>THAO TÁC</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {paginated.map(a => (
+                  <tr key={a.id}>
+                    <td><strong className="mono appointment-code">{a.code}</strong></td>
+                    <td><span className="plate plate-large">{vehicleLabel(vehicles, a.vehicle_id)}</span></td>
+                    <td className="appointment-date-cell">{formatDate(a.appointment_date)}</td>
+                    <td><span className="time-badge">{a.start_time.slice(0, 5)} - {a.end_time.slice(0, 5)}</span></td>
+                    <td>{serviceName(a.service_type)}</td>
+                    <td><StatusBadge value={a.status}/></td>
+                    <td>
+                      {a.status === 'active' && ['admin', 'intake', 'owner'].includes(role) ? (
+                        <button className="button button-ghost button-sm cancel-action-btn" onClick={() => void onCancel(a.id)}>Hủy hẹn</button>
+                      ) : <span className="text-muted">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <TablePagination
+            currentPage={currentPage}
+            totalItems={filtered.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            itemName="lịch hẹn"
+          />
+        </>
       ) : (
         <Empty title="Chưa có lịch hẹn" detail="Lịch hẹn mới sẽ hiển thị ở đây."/>
       )}
@@ -2968,74 +3095,13 @@ function InspectionsPage({ role, vehicles, inspections, token, runAction, onOpen
           </div>
 
           {/* Pagination Controls */}
-          <div className="table-pagination-bar">
-            <div className="table-pagination-info">
-              Hiển thị <strong>{(currentPage - 1) * pageSize + 1}</strong> - <strong>{Math.min(currentPage * pageSize, visible.length)}</strong> trên tổng số <strong>{visible.length}</strong> hồ sơ
-            </div>
-            <div className="table-pagination-controls">
-              <button
-                type="button"
-                className="pagination-btn"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage(1)}
-                title="Trang đầu"
-              >
-                «
-              </button>
-              <button
-                type="button"
-                className="pagination-btn"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                title="Trang trước"
-              >
-                ‹ Trước
-              </button>
-
-              {Array.from({ length: totalPages }, (_, idx) => idx + 1)
-                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
-                .reduce<(number | string)[]>((acc, p, i, arr) => {
-                  if (i > 0 && p - (arr[i - 1] as number) > 1) {
-                    acc.push('...')
-                  }
-                  acc.push(p)
-                  return acc
-                }, [])
-                .map((p, idx) =>
-                  p === '...' ? (
-                    <span key={`ellipsis-${idx}`} className="pagination-ellipsis">…</span>
-                  ) : (
-                    <button
-                      key={`page-${p}`}
-                      type="button"
-                      className={`pagination-btn ${p === currentPage ? 'active' : ''}`}
-                      onClick={() => setCurrentPage(p as number)}
-                    >
-                      {p}
-                    </button>
-                  )
-                )}
-
-              <button
-                type="button"
-                className="pagination-btn"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                title="Trang sau"
-              >
-                Sau ›
-              </button>
-              <button
-                type="button"
-                className="pagination-btn"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage(totalPages)}
-                title="Trang cuối"
-              >
-                »
-              </button>
-            </div>
-          </div>
+          <TablePagination
+            currentPage={currentPage}
+            totalItems={visible.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            itemName="hồ sơ"
+          />
         </>
       ) : (
         <Empty title="Chưa có hồ sơ kiểm định" detail="Tiếp nhận hồ sơ mới để bắt đầu theo dõi."/>
