@@ -1265,10 +1265,33 @@ def cancel_appointment(appointment_id: int, db: Session = Depends(get_db), accou
 
 @api.post("/inspections", response_model=InspectionRead, status_code=201)
 def create_inspection(body: InspectionCreate, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.INTAKE, Role.ADMIN))):
-    if db.get(Vehicle, body.vehicle_id) is None:
+    vehicle = db.get(Vehicle, body.vehicle_id)
+    if vehicle is None:
         raise HTTPException(404, "Không tìm thấy thông tin phương tiện.")
     inspection = InspectionFile(**body.model_dump(), code=f"INS-{uuid4().hex[:12].upper()}", received_at=datetime.now(timezone.utc).replace(tzinfo=None), status=InspectionStatus.RECEIVED)
     db.add(inspection)
+
+    # Tự động cập nhật lịch hẹn đang hiệu lực của xe này sang Đã tiếp nhận (COMPLETED)
+    active_appointment = db.scalar(
+        select(Appointment).where(
+            Appointment.vehicle_id == body.vehicle_id,
+            Appointment.status == AppointmentStatus.ACTIVE,
+        )
+    )
+    if active_appointment:
+        active_appointment.status = AppointmentStatus.COMPLETED
+        active_appointment.active_guard = None
+        plate = vehicle.registration_number if vehicle else ""
+        log_audit_event(
+            db,
+            account.id,
+            entity_type="appointment",
+            entity_id=active_appointment.id,
+            action="complete_appointment",
+            before_value=AppointmentStatus.ACTIVE.value,
+            after_value=AppointmentStatus.COMPLETED.value,
+        )
+
     db.commit()
     db.refresh(inspection)
     return inspection

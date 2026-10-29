@@ -4,7 +4,7 @@ import './support-chat.css'
 
 type Page = 'overview' | 'vehicles' | 'appointments' | 'inspections' | 'owners' | 'roles' | 'audit-logs' | 'inspection-testing' | 'profile'
 const roleName: Record<Role, string> = { admin: 'Quản trị viên', intake: 'Nhân viên tiếp nhận', inspector: 'Kiểm định viên', owner: 'Chủ xe' }
-const statusName: Record<string, string> = { active: 'Đang hiệu lực', cancelled: 'Đã hủy', completed: 'Hoàn tất', received: 'Mới tiếp nhận', needs_documents: 'Thiếu hồ sơ', in_progress: 'Đang kiểm định', passed: 'Đạt', failed: 'Không đạt' }
+const statusName: Record<string, string> = { active: 'Đang hiệu lực', cancelled: 'Đã hủy', completed: 'Đã tiếp nhận', received: 'Mới tiếp nhận', needs_documents: 'Thiếu hồ sơ', in_progress: 'Đang kiểm định', passed: 'Đạt', failed: 'Không đạt' }
 const resultName: Record<string, string> = { dat: 'Đạt', mi: 'Mi', ma: 'Ma', dd: 'DD' }
 const canIntake = (role: Role) => ['admin', 'intake'].includes(role)
 const canInspect = (role: Role) => role === 'inspector'
@@ -1655,7 +1655,10 @@ function IntakeOverview({
   const currentHour = new Date().getHours()
   const isMorning = currentHour < 12
   const todayAppointments = appointments.filter(a => a.appointment_date === today)
-  const activeTodayApt = todayAppointments.filter(a => a.status === 'active')
+  const isAppointmentCompleted = (apt: Appointment) =>
+    apt.status === 'completed' ||
+    inspections.some(ins => ins.vehicle_id === apt.vehicle_id && getLocalDateString(new Date(ins.received_at)) === today)
+  const pendingTodayApt = todayAppointments.filter(a => a.status === 'active' && !isAppointmentCompleted(a))
   const receivedCount = inspections.filter(i => i.status === 'received').length
   const needsDocsCount = inspections.filter(i => i.status === 'needs_documents').length
   const recentIntakes = [...inspections].sort((a, b) => b.received_at.localeCompare(a.received_at)).slice(0, 5)
@@ -1695,7 +1698,7 @@ function IntakeOverview({
       </div>
 
       <section className="stat-grid">
-        <StatCard label="Khách hẹn hôm nay" value={activeTodayApt.length} hint="Cần đón tiếp trong ca" tone="blue" />
+        <StatCard label="Khách hẹn hôm nay" value={todayAppointments.length} hint={`${pendingTodayApt.length} chờ tiếp nhận trong ca`} tone="blue" />
         <StatCard label="Hồ sơ mới tiếp nhận" value={receivedCount} hint="Đang chờ vào chuyền" tone="green" />
         <StatCard label="Hồ sơ thiếu chứng từ" value={needsDocsCount} hint="Chờ bổ sung giấy tờ" tone="orange" />
         <StatCard label="Tổng chủ xe quản lý" value={owners.length} hint="Hồ sơ khách hàng" tone="purple" />
@@ -1705,8 +1708,8 @@ function IntakeOverview({
       <section className="panel" style={{ marginBottom: 24 }}>
         <div className="panel-heading">
           <div>
-            <h3>Khách hẹn hôm nay cần đón tiếp ({activeTodayApt.length})</h3>
-            <p>Đối chiếu biển số xe và bấm "Tiếp nhận ngay" khi khách có mặt tại quầy</p>
+            <h3>Khách hẹn hôm nay cần đón tiếp ({todayAppointments.length})</h3>
+            <p>Đối chiếu biển số xe và bấm "Tiếp nhận ngay" khi khách có mặt tại quầy ({pendingTodayApt.length} lịch hẹn chờ đón tiếp)</p>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className="button button-outline button-sm" onClick={() => navigate('appointments')}>
@@ -1715,7 +1718,7 @@ function IntakeOverview({
             <button className="button button-outline button-sm" onClick={onOpenAppointmentModal}>Thêm lịch hẹn</button>
           </div>
         </div>
-        {activeTodayApt.length ? (
+        {todayAppointments.length ? (
           <div className="table-wrap">
             <table className="appointments-table">
               <thead>
@@ -1728,26 +1731,53 @@ function IntakeOverview({
                 </tr>
               </thead>
               <tbody>
-                {activeTodayApt.map(item => (
-                  <tr key={item.id}>
-                    <td><strong className="mono appointment-code">{item.code}</strong></td>
-                    <td><span className="plate plate-large">{vehicleLabel(vehicles, item.vehicle_id)}</span></td>
-                    <td>
-                      <span className="time-badge">{item.start_time.slice(0, 5)} - {item.end_time.slice(0, 5)}</span>
-                    </td>
-                    <td>{serviceName(item.service_type)}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="button button-primary button-sm" onClick={() => onStartIntake(item.vehicle_id)}>
-                          Tiếp nhận ngay
-                        </button>
-                        <button className="button button-ghost button-sm" onClick={() => void onCancelAppointment(item.id)}>
-                          Hủy
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {todayAppointments.map(item => {
+                  const isCompleted = isAppointmentCompleted(item);
+                  const isCancelled = item.status === 'cancelled';
+                  return (
+                    <tr key={item.id}>
+                      <td><strong className="mono appointment-code">{item.code}</strong></td>
+                      <td><span className="plate plate-large">{vehicleLabel(vehicles, item.vehicle_id)}</span></td>
+                      <td>
+                        <span className="time-badge">{item.start_time.slice(0, 5)} - {item.end_time.slice(0, 5)}</span>
+                      </td>
+                      <td>{serviceName(item.service_type)}</td>
+                      <td>
+                        {isCompleted ? (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '5px 12px',
+                              borderRadius: '6px',
+                              backgroundColor: '#ecfdf5',
+                              color: '#059669',
+                              border: '1px solid #a7f3d0',
+                              fontSize: '12.5px',
+                              fontWeight: 600
+                            }}
+                          >
+                            ✓ Đã tiếp nhận
+                          </span>
+                        ) : isCancelled ? (
+                          <span style={{ color: '#94a3b8', fontSize: '13px', fontStyle: 'italic' }}>
+                            Đã hủy
+                          </span>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button className="button button-primary button-sm" onClick={() => onStartIntake(item.vehicle_id)}>
+                              Tiếp nhận ngay
+                            </button>
+                            <button className="button button-ghost button-sm" onClick={() => void onCancelAppointment(item.id)}>
+                              Hủy
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -4043,7 +4073,7 @@ function InspectionDetail({ inspection, vehicle, owner, token, onClose }: { insp
    UI UTILITY COMPONENTS
    ========================================================================== */
 function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: ReactNode }) { return <div className="page-heading"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1>{description && <p>{description}</p>}</div>{action && <div className="heading-action">{action}</div>}</div> }
-function StatusBadge({ value }: { value: string }) { const tone = ['active', 'passed', 'dat'].includes(value) ? 'badge-green' : ['failed', 'dd', 'ma'].includes(value) ? 'badge-red' : ['in_progress', 'mi'].includes(value) ? 'badge-blue' : value === 'cancelled' ? 'badge-gray' : 'badge-amber'; return <span className={`badge ${tone}`}>{statusName[value] ?? resultName[value] ?? value}</span> }
+function StatusBadge({ value }: { value: string }) { const tone = ['active', 'passed', 'dat', 'completed'].includes(value) ? 'badge-green' : ['failed', 'dd', 'ma'].includes(value) ? 'badge-red' : ['in_progress', 'mi'].includes(value) ? 'badge-blue' : value === 'cancelled' ? 'badge-gray' : 'badge-amber'; return <span className={`badge ${tone}`}>{statusName[value] ?? resultName[value] ?? value}</span> }
 function Empty({ title, detail }: { title: string; detail: string }) { return <div className="empty-state"><strong>{title}</strong><p>{detail}</p></div> }
 function DetailField({ label, value }: { label: string; value?: string | null }) { return <div className="detail-field"><small>{label}</small><strong>{value || '—'}</strong></div> }
 function vehicleLabel(vehicles: Vehicle[], id: number) { return vehicles.find(v => v.id === id)?.registration_number ?? `Phương tiện #${id}` }
