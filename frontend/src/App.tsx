@@ -1027,7 +1027,7 @@ function InspectionTestingPage({
               </label>
 
               <div className="form-grid" style={{ marginTop: 12 }}>
-                <Field label="Trị số đo lường thực tế (nếu có)">
+                <Field label="Trị số thực tế (nếu có)">
                   <input
                     type="number"
                     step="any"
@@ -1202,7 +1202,7 @@ function InspectionTestingPage({
                 <div className="result-row" key={r.id}>
                   <span className="stage-number">{r.stage}</span>
                   <div>
-                    <b>{r.item_code}</b>
+                    <b title={r.item_code}>{r.item_code}</b>
                     <small>Công đoạn {r.stage} · {formatDate(r.recorded_at)}</small>
                   </div>
                   {r.measured_value !== null && (
