@@ -317,17 +317,28 @@ button:disabled {
 .user-meta {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: flex-start;
+  gap: 3px;
   flex: 1;
   min-width: 0;
 }
 
 .user-meta strong {
+  max-width: 100%;
   font-size: 13.5px;
   font-weight: 700;
   color: #0f172a;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-meta .role-badge-pill {
+  width: fit-content;
+  max-width: fit-content;
+  align-self: flex-start;
+  padding: 2px 8px;
+  font-size: 11px;
 }
 
 .user-meta span {
@@ -3697,12 +3708,17 @@ input:-webkit-autofill:active {
 .role-badge-pill {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: fit-content;
+  align-self: flex-start;
   gap: 5px;
-  padding: 4px 10px;
+  padding: 3px 9px;
   border-radius: 20px;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.2px;
+  white-space: nowrap;
 }
 
 .role-badge-admin {

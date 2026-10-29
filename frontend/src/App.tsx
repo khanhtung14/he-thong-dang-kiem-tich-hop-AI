@@ -308,7 +308,12 @@ function App() {
             </div>
             <div className="user-meta">
               <strong>{(session.display_name || session.username).replace(/\s*\(DỮ LIỆU MẪU\)/gi, '')}</strong>
-              <span className={`role-badge-pill role-badge-${session.role}`}>{roleName[session.role]}</span>
+              <span
+                className={`role-badge-pill role-badge-${session.role}`}
+                style={{ width: 'fit-content', maxWidth: 'fit-content', alignSelf: 'flex-start', display: 'inline-flex' }}
+              >
+                {roleName[session.role]}
+              </span>
             </div>
             <button
               className="logout"
