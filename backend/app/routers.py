@@ -846,9 +846,9 @@ def get_owner_for_account(db: Session, account: Account) -> Owner | None:
 def ensure_vehicle_access(db: Session, vehicle_id: int, account: Account) -> Vehicle:
     vehicle = db.get(Vehicle, vehicle_id)
     if vehicle is None:
-        raise HTTPException(404, "Vehicle not found")
+        raise HTTPException(404, "Không tìm thấy thông tin phương tiện.")
     if account.role == Role.OWNER and account.owner_id != vehicle.owner_id:
-        raise HTTPException(404, "Vehicle not found")
+        raise HTTPException(404, "Không tìm thấy thông tin phương tiện hoặc bạn không có quyền truy cập.")
     return vehicle
 
 
@@ -878,7 +878,7 @@ def create_vehicle(body: VehicleCreate, db: Session = Depends(get_db), account: 
             raise HTTPException(400, "Vui lòng chọn chủ xe cho phương tiện")
 
     if db.get(Owner, target_owner_id) is None:
-        raise HTTPException(404, "Owner not found")
+        raise HTTPException(404, "Không tìm thấy thông tin chủ xe.")
 
     vehicle_data = body.model_dump()
     vehicle_data["owner_id"] = target_owner_id
@@ -903,7 +903,7 @@ def create_appointment(body: AppointmentCreate, db: Session = Depends(get_db), a
     allowed = ((time(6, 30) <= body.start_time < body.end_time <= time(11, 0)) or
                (time(13, 0) <= body.start_time < body.end_time <= time(17, 30)))
     if not allowed:
-        raise HTTPException(422, "Appointment must fit within 06:30–11:00 or 13:00–17:30")
+        raise HTTPException(422, "Khung giờ hẹn phải nằm trọn trong ca sáng (06:30 - 11:00) hoặc ca chiều (13:00 - 17:30).")
     code = f"APT-{uuid4().hex[:12].upper()}"
     appointment = Appointment(**body.model_dump(), code=code, status=AppointmentStatus.ACTIVE, active_guard=1)
     db.add(appointment)
@@ -911,7 +911,7 @@ def create_appointment(body: AppointmentCreate, db: Session = Depends(get_db), a
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(409, "Vehicle already has an active appointment")
+        raise HTTPException(409, "Phương tiện này hiện đã có một lịch hẹn đang hiệu lực. Vui lòng hoàn tất hoặc hủy lịch hẹn cũ trước khi đặt lịch mới.")
     db.refresh(appointment)
     return appointment
 
@@ -931,10 +931,10 @@ def list_appointments(vehicle_id: int | None = None, db: Session = Depends(get_d
 def cancel_appointment(appointment_id: int, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.OWNER, Role.INTAKE, Role.ADMIN))):
     appointment = db.get(Appointment, appointment_id)
     if appointment is None:
-        raise HTTPException(404, "Appointment not found")
+        raise HTTPException(404, "Không tìm thấy thông tin lịch hẹn.")
     ensure_vehicle_access(db, appointment.vehicle_id, account)
     if appointment.status != AppointmentStatus.ACTIVE:
-        raise HTTPException(409, "Only an active appointment can be cancelled")
+        raise HTTPException(409, "Chỉ có thể hủy lịch hẹn đang ở trạng thái hiệu lực.")
     appointment.status = AppointmentStatus.CANCELLED
     appointment.active_guard = None
     db.commit()
@@ -945,7 +945,7 @@ def cancel_appointment(appointment_id: int, db: Session = Depends(get_db), accou
 @api.post("/inspections", response_model=InspectionRead, status_code=201)
 def create_inspection(body: InspectionCreate, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.INTAKE, Role.ADMIN))):
     if db.get(Vehicle, body.vehicle_id) is None:
-        raise HTTPException(404, "Vehicle not found")
+        raise HTTPException(404, "Không tìm thấy thông tin phương tiện.")
     inspection = InspectionFile(**body.model_dump(), code=f"INS-{uuid4().hex[:12].upper()}", received_at=datetime.now(timezone.utc).replace(tzinfo=None), status=InspectionStatus.RECEIVED)
     db.add(inspection)
     db.commit()
@@ -968,9 +968,9 @@ def list_inspections(vehicle_id: int | None = None, db: Session = Depends(get_db
 def record_result(inspection_id: int, body: ItemResultCreate, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.INSPECTOR))):
     inspection = db.get(InspectionFile, inspection_id)
     if inspection is None:
-        raise HTTPException(404, "Inspection file not found")
+        raise HTTPException(404, "Không tìm thấy hồ sơ kiểm định.")
     if inspection.status in (InspectionStatus.PASSED, InspectionStatus.FAILED):
-        raise HTTPException(409, "Finalized inspection results cannot be changed")
+        raise HTTPException(409, "Hồ sơ kiểm định đã hoàn tất kết luận, không thể ghi nhận thêm kết quả.")
     result = InspectionItem(**body.model_dump(), inspection_id=inspection.id, inspector_account_id=account.id, recorded_at=datetime.now(timezone.utc).replace(tzinfo=None))
     db.add(result)
     if body.result in (ItemResult.MAJOR, ItemResult.DANGEROUS):
@@ -986,7 +986,7 @@ def record_result(inspection_id: int, body: ItemResultCreate, db: Session = Depe
 def list_results(inspection_id: int, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.OWNER, Role.INTAKE, Role.INSPECTOR, Role.ADMIN))):
     inspection = db.get(InspectionFile, inspection_id)
     if inspection is None:
-        raise HTTPException(404, "Inspection file not found")
+        raise HTTPException(404, "Không tìm thấy hồ sơ kiểm định.")
     ensure_vehicle_access(db, inspection.vehicle_id, account)
     return db.scalars(select(InspectionItem).where(InspectionItem.inspection_id == inspection_id).order_by(InspectionItem.stage, InspectionItem.item_code)).all()
 
@@ -995,14 +995,14 @@ def list_results(inspection_id: int, db: Session = Depends(get_db), account: Acc
 def finalize_inspection(inspection_id: int, body: FinalizeInspectionRequest, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.INSPECTOR))):
     inspection = db.get(InspectionFile, inspection_id)
     if inspection is None:
-        raise HTTPException(404, "Inspection file not found")
+        raise HTTPException(404, "Không tìm thấy hồ sơ kiểm định.")
     if inspection.status in (InspectionStatus.PASSED, InspectionStatus.FAILED):
-        raise HTTPException(409, "Inspection is already finalized")
+        raise HTTPException(409, "Hồ sơ kiểm định đã được kết luận hoàn tất trước đó.")
     if not body.checklist_complete:
-        raise HTTPException(422, "Applicable inspection checklist must be complete")
+        raise HTTPException(422, "Danh mục các hạng mục kiểm định bắt buộc phải được hoàn thành.")
     results = db.scalars(select(InspectionItem).where(InspectionItem.inspection_id == inspection_id)).all()
     if not results:
-        raise HTTPException(422, "At least one inspection item result is required")
+        raise HTTPException(422, "Cần có ít nhất một kết quả kiểm tra hạng mục kiểm định để kết luận.")
     inspection.status = InspectionStatus.FAILED if any(item.result in (ItemResult.MAJOR, ItemResult.DANGEROUS) for item in results) else InspectionStatus.PASSED
     db.commit()
     db.refresh(inspection)
@@ -1013,13 +1013,13 @@ def finalize_inspection(inspection_id: int, body: FinalizeInspectionRequest, db:
 def issue_certificate(inspection_id: int, body: CertificateCreate, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.ADMIN, Role.INSPECTOR))):
     inspection = db.get(InspectionFile, inspection_id)
     if inspection is None:
-        raise HTTPException(404, "Inspection file not found")
+        raise HTTPException(404, "Không tìm thấy hồ sơ kiểm định.")
     if inspection.status != InspectionStatus.PASSED:
-        raise HTTPException(409, "Certificate requires a passed inspection")
+        raise HTTPException(409, "Chỉ có thể cấp giấy chứng nhận cho hồ sơ kiểm định đạt yêu cầu.")
     if not body.payment_complete or not body.legal_status_allowed:
-        raise HTTPException(409, "Certificate requires completed payment and an allowed legal status")
+        raise HTTPException(409, "Yêu cầu hoàn tất thanh toán phí/lệ phí và xác nhận phương tiện đủ điều kiện pháp lý trước khi cấp giấy.")
     if body.expires_on < body.issued_on:
-        raise HTTPException(422, "Expiry date cannot precede issue date")
+        raise HTTPException(422, "Ngày hết hạn giấy chứng nhận không thể trước ngày cấp.")
     cert_data = body.model_dump()
     year = body.issued_on.year if body.issued_on else date.today().year
 
@@ -1045,7 +1045,7 @@ def issue_certificate(inspection_id: int, body: CertificateCreate, db: Session =
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(409, "Certificate or stamp number already exists")
+        raise HTTPException(409, "Số giấy chứng nhận hoặc số tem kiểm định đã tồn tại trong hệ thống.")
     db.refresh(certificate)
     return certificate
 
@@ -1054,7 +1054,7 @@ def issue_certificate(inspection_id: int, body: CertificateCreate, db: Session =
 def correct_certificate(certificate_id: int, body: CertificateCreate, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.ADMIN))):
     certificate = db.get(Certificate, certificate_id)
     if certificate is None:
-        raise HTTPException(404, "Certificate not found")
+        raise HTTPException(404, "Không tìm thấy thông tin giấy chứng nhận.")
     before = {key: str(getattr(certificate, key)) for key in CertificateCreate.model_fields}
     for key, value in body.model_dump().items():
         setattr(certificate, key, value)

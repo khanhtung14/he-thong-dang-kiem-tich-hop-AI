@@ -34,7 +34,7 @@ def create_access_token(account: Account) -> str:
 
 
 def current_account(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> Account:
-    unauthorized = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials", headers={"WWW-Authenticate": "Bearer"})
+    unauthorized = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Thông tin xác thực không hợp lệ hoặc phiên đăng nhập đã hết hạn.", headers={"WWW-Authenticate": "Bearer"})
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"], issuer=settings.jwt_issuer)
         account_id = int(payload["sub"])
@@ -49,6 +49,6 @@ def current_account(token: str = Depends(oauth2_scheme), db: Session = Depends(g
 def require_roles(*roles: Role):
     def dependency(account: Account = Depends(current_account)) -> Account:
         if account.role not in roles:
-            raise HTTPException(status_code=403, detail="Insufficient permissions")
+            raise HTTPException(status_code=403, detail="Bạn không có quyền thực hiện thao tác này.")
         return account
     return dependency

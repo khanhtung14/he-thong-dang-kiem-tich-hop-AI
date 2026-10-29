@@ -226,11 +226,13 @@ function App() {
       await load(session)
     }
     catch (reason) {
+      const errMsg = reason instanceof Error ? reason.message : 'Có lỗi xảy ra'
       if (reason instanceof ApiError && reason.status === 403) {
-        setForbiddenError({ target: page, message: reason.message })
+        setForbiddenError({ target: page, message: errMsg })
       } else {
-        setError(reason instanceof Error ? reason.message : 'Có lỗi xảy ra')
+        setError(errMsg)
       }
+      throw reason
     }
   }
 
@@ -3274,7 +3276,118 @@ function VehicleModal({
     </Modal>
   );
 }
-function AppointmentModal({ vehicles, onClose, onSubmit }: { vehicles: Vehicle[]; onClose: () => void; onSubmit: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void> }) { const [error, setError] = useState(''); async function submit(e: FormEvent<HTMLFormElement>) { const f = new FormData(e.currentTarget); try { await onSubmit({ vehicle_id: Number(f.get('vehicle')), appointment_date: String(f.get('date')), start_time: String(f.get('start')), end_time: String(f.get('end')), service_type: String(f.get('service')) }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể tạo lịch') } } return <Modal title="Tạo lịch hẹn" subtitle="Khung giờ phải nằm trọn trong buổi sáng hoặc buổi chiều." onClose={onClose} onSubmit={submit}><div className="form-grid"><Field label="Phương tiện" required><select name="vehicle" required defaultValue=""><option value="" disabled>Chọn phương tiện</option>{vehicles.map(v => <option key={v.id} value={v.id}>{v.registration_number} · {v.vehicle_type}</option>)}</select></Field><Field label="Ngày hẹn" required><input name="date" type="date" required min={new Date().toISOString().slice(0, 10)}/></Field><Field label="Loại dịch vụ" required><select name="service" required><option value="periodic">Kiểm định định kỳ</option><option value="new_registration">Đăng ký xe mới</option><option value="information_change">Thay đổi thông tin</option></select></Field><Field label="Giờ bắt đầu" required><select name="start" required><option value="06:30">06:30</option><option value="07:00">07:00</option><option value="08:00">08:00</option><option value="09:00">09:00</option><option value="10:00">10:00</option><option value="13:00">13:00</option><option value="14:00">14:00</option><option value="15:00">15:00</option><option value="16:00">16:00</option><option value="17:00">17:00</option></select></Field><Field label="Giờ kết thúc" required><select name="end" required><option value="07:00">07:00</option><option value="08:00">08:00</option><option value="09:00">09:00</option><option value="10:00">10:00</option><option value="11:00">11:00</option><option value="14:00">14:00</option><option value="15:00">15:00</option><option value="16:00">16:00</option><option value="17:00">17:00</option><option value="17:30">17:30</option></select></Field></div>{error && <div className="form-error">{error}</div>}</Modal> }
+function AppointmentModal({
+  vehicles,
+  onClose,
+  onSubmit
+}: {
+  vehicles: Vehicle[];
+  onClose: () => void;
+  onSubmit: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void>;
+}) {
+  const [error, setError] = useState('');
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError('');
+    const f = new FormData(e.currentTarget);
+    const vehicleId = Number(f.get('vehicle'));
+    const dateVal = String(f.get('date'));
+    const start = String(f.get('start'));
+    const end = String(f.get('end'));
+    const service = String(f.get('service'));
+
+    if (!vehicleId) {
+      setError('Vui lòng chọn phương tiện để đặt lịch hẹn.');
+      return;
+    }
+    if (!dateVal) {
+      setError('Vui lòng chọn ngày hẹn.');
+      return;
+    }
+    if (start >= end) {
+      setError('Giờ kết thúc phải sau giờ bắt đầu.');
+      return;
+    }
+    const isMorning = start >= '06:30' && end <= '11:00';
+    const isAfternoon = start >= '13:00' && end <= '17:30';
+    if (!isMorning && !isAfternoon) {
+      setError('Khung giờ hẹn phải nằm trọn trong buổi sáng (06:30 - 11:00) hoặc buổi chiều (13:00 - 17:30).');
+      return;
+    }
+
+    try {
+      await onSubmit({
+        vehicle_id: vehicleId,
+        appointment_date: dateVal,
+        start_time: start,
+        end_time: end,
+        service_type: service,
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Không thể tạo lịch hẹn.');
+    }
+  }
+
+  return (
+    <Modal
+      title="Tạo lịch hẹn"
+      subtitle="Khung giờ phải nằm trọn trong buổi sáng hoặc buổi chiều."
+      onClose={onClose}
+      onSubmit={submit}
+    >
+      <div className="form-grid">
+        <Field label="Phương tiện" required>
+          <select name="vehicle" required defaultValue="">
+            <option value="" disabled>Chọn phương tiện</option>
+            {vehicles.map(v => (
+              <option key={v.id} value={v.id}>{v.registration_number} · {v.vehicle_type}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Ngày hẹn" required>
+          <input name="date" type="date" required min={new Date().toISOString().slice(0, 10)}/>
+        </Field>
+        <Field label="Loại dịch vụ" required>
+          <select name="service" required>
+            <option value="periodic">Kiểm định định kỳ</option>
+            <option value="new_registration">Đăng ký xe mới</option>
+            <option value="information_change">Thay đổi thông tin</option>
+          </select>
+        </Field>
+        <Field label="Giờ bắt đầu" required>
+          <select name="start" required>
+            <option value="06:30">06:30</option>
+            <option value="07:00">07:00</option>
+            <option value="08:00">08:00</option>
+            <option value="09:00">09:00</option>
+            <option value="10:00">10:00</option>
+            <option value="13:00">13:00</option>
+            <option value="14:00">14:00</option>
+            <option value="15:00">15:00</option>
+            <option value="16:00">16:00</option>
+            <option value="17:00">17:00</option>
+          </select>
+        </Field>
+        <Field label="Giờ kết thúc" required>
+          <select name="end" required>
+            <option value="07:00">07:00</option>
+            <option value="08:00">08:00</option>
+            <option value="09:00">09:00</option>
+            <option value="10:00">10:00</option>
+            <option value="11:00">11:00</option>
+            <option value="14:00">14:00</option>
+            <option value="15:00">15:00</option>
+            <option value="16:00">16:00</option>
+            <option value="17:00">17:00</option>
+            <option value="17:30">17:30</option>
+          </select>
+        </Field>
+      </div>
+      {error && <div className="form-error">{error}</div>}
+    </Modal>
+  );
+}
 
 function InspectionModal({ vehicles, onClose, onSubmit, defaultVehicleId }: { vehicles: Vehicle[]; onClose: () => void; onSubmit: (body: Pick<Inspection, 'vehicle_id' | 'inspection_type' | 'intake_channel' | 'old_certificate_management_number' | 'registration_document_number' | 'insurance_contract_number' | 'insurance_expiry'>) => Promise<void>; defaultVehicleId?: number }) {
   const [error, setError] = useState('');

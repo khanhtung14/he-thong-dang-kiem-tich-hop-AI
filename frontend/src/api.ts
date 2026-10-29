@@ -35,6 +35,39 @@ export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message) }
 }
 
+const ERROR_TRANSLATIONS: Record<string, string> = {
+  'vehicle already has an active appointment': 'Phương tiện này hiện đã có một lịch hẹn đang hiệu lực. Vui lòng hoàn tất hoặc hủy lịch hẹn cũ trước khi đặt lịch mới.',
+  'appointment must fit within': 'Khung giờ hẹn phải nằm trọn trong ca sáng (06:30 - 11:00) hoặc ca chiều (13:00 - 17:30).',
+  'appointment not found': 'Không tìm thấy thông tin lịch hẹn.',
+  'only an active appointment can be cancelled': 'Chỉ có thể hủy lịch hẹn đang ở trạng thái hiệu lực.',
+  'vehicle not found': 'Không tìm thấy thông tin phương tiện.',
+  'owner not found': 'Không tìm thấy thông tin chủ xe.',
+  'inspection file not found': 'Không tìm thấy hồ sơ kiểm định.',
+  'inspection is already finalized': 'Hồ sơ kiểm định đã được hoàn tất trước đó.',
+  'finalized inspection results cannot be changed': 'Hồ sơ kiểm định đã hoàn tất kết luận, không thể thay đổi.',
+  'applicable inspection checklist must be complete': 'Danh mục các hạng mục kiểm định bắt buộc phải được hoàn thành.',
+  'at least one inspection item result is required': 'Cần có ít nhất một kết quả kiểm tra hạng mục kiểm định để kết luận.',
+  'certificate requires a passed inspection': 'Chỉ có thể cấp giấy chứng nhận cho hồ sơ kiểm định đạt yêu cầu.',
+  'certificate requires completed payment': 'Yêu cầu hoàn tất thanh toán phí/lệ phí và phương tiện đủ điều kiện pháp lý trước khi cấp giấy.',
+  'expiry date cannot precede issue date': 'Ngày hết hạn giấy chứng nhận không thể trước ngày cấp.',
+  'certificate or stamp number already exists': 'Số giấy chứng nhận hoặc số tem kiểm định đã tồn tại trong hệ thống.',
+  'certificate not found': 'Không tìm thấy thông tin giấy chứng nhận.',
+  'invalid authentication credentials': 'Thông tin xác thực không hợp lệ hoặc phiên đăng nhập đã hết hạn.',
+  'insufficient permissions': 'Bạn không có quyền thực hiện thao tác này.',
+  'internal server error': 'Lỗi máy chủ nội bộ. Vui lòng thử lại sau.',
+}
+
+export function translateErrorMessage(msg: string): string {
+  if (!msg) return 'Có lỗi xảy ra'
+  const lower = msg.toLowerCase()
+  for (const [enKey, viVal] of Object.entries(ERROR_TRANSLATIONS)) {
+    if (lower.includes(enKey)) {
+      return viVal
+    }
+  }
+  return msg
+}
+
 async function request<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -42,8 +75,13 @@ async function request<T>(path: string, token: string, init: RequestInit = {}): 
   })
   if (!response.ok) {
     const body = await response.json().catch(() => null)
-    const detail = body?.detail
-    throw new ApiError(typeof detail === 'string' ? detail : `Yêu cầu thất bại (${response.status})`, response.status)
+    let detail = body?.detail
+    if (Array.isArray(detail)) {
+      // Pydantic validation errors list
+      detail = detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+    }
+    const rawMsg = typeof detail === 'string' ? detail : `Yêu cầu thất bại (${response.status})`
+    throw new ApiError(translateErrorMessage(rawMsg), response.status)
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
