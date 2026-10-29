@@ -2356,6 +2356,17 @@ input:-webkit-autofill:active {
   color: #94a3b8;
 }
 
+/* Hide native browser (Edge/IE) password reveal eye to prevent duplicate eye buttons */
+input::-ms-reveal,
+input::-ms-clear,
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none;
+}
+
 .password-toggle-btn {
   background: transparent;
   border: none;
