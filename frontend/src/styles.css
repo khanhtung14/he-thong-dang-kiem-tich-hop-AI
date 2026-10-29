@@ -655,7 +655,7 @@ button:disabled {
 }
 
 .recent-panel, .quick-panel {
-  min-height: 310px;
+  min-height: auto;
 }
 
 .panel-heading {
@@ -1060,7 +1060,7 @@ button:disabled {
 
 /* Tables System */
 .list-panel {
-  min-height: 320px;
+  min-height: auto;
   border-radius: 14px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -3792,7 +3792,7 @@ button.status-badge-pill:hover {
 
 .roles-panel .table-wrap {
   overflow: visible;
-  min-height: 200px;
+  min-height: auto;
 }
 
 .action-dropdown-container {
