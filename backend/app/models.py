@@ -165,3 +165,5 @@ class AuditEntry(Base):
     before_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     after_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime)
+
+    actor: Mapped["Account"] = relationship(foreign_keys=[actor_account_id])

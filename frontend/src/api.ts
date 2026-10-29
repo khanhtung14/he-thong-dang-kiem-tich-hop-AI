@@ -29,6 +29,21 @@ export type AccountCreateAdminPayload = {
   phone?: string
 }
 
+export type AuditLogItem = {
+  id: number
+  actor_account_id: number
+  actor_username: string
+  actor_display_name: string | null
+  actor_role: Role
+  entity_type: string
+  entity_id: number
+  action: string
+  action_label: string
+  before_value: string | null
+  after_value: string | null
+  created_at: string
+}
+
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 export class ApiError extends Error {
@@ -244,5 +259,13 @@ export const api = {
   resetAccountPassword: (token: string, accountId: number, new_password: string) => request<{ message: string }>(`/api/v1/admin/accounts/${accountId}/reset-password`, token, { method: 'POST', body: JSON.stringify({ new_password }) }),
   updateAdminAccountProfile: (token: string, accountId: number, data: { display_name?: string; email?: string; phone?: string }) => request<AccountListItem>(`/api/v1/admin/accounts/${accountId}/profile`, token, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAdminAccount: (token: string, accountId: number) => request<{ message: string }>(`/api/v1/admin/accounts/${accountId}`, token, { method: 'DELETE' }),
+  auditLogs: (token: string, params?: { action?: string; role?: string; query_text?: string }) => {
+    const sp = new URLSearchParams()
+    if (params?.action && params.action !== 'all') sp.append('action', params.action)
+    if (params?.role && params.role !== 'all') sp.append('role', params.role)
+    if (params?.query_text && params.query_text.trim()) sp.append('query_text', params.query_text.trim())
+    const qs = sp.toString()
+    return request<AuditLogItem[]>(`/api/v1/audit-logs${qs ? `?${qs}` : ''}`, token)
+  },
 }
 

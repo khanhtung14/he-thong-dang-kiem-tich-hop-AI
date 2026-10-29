@@ -24,12 +24,184 @@ from app.schemas import (
     AccountListItem, AccountRoleUpdateRequest, AccountStatusUpdateRequest,
     AccountCreateAdminRequest, AccountResetPasswordRequest, AccountProfileUpdateAdminRequest,
     ForgotPasswordRequest, ForgotPasswordResponse, ResetPasswordWithOtpRequest,
-    VerifyOtpOnlyRequest,
+    VerifyOtpOnlyRequest, AuditLogItem,
 )
 from app.security import create_access_token, current_account, hash_password, require_roles, verify_password
 
 auth_router = APIRouter(prefix="/auth", tags=["authentication"])
 api = APIRouter()
+
+ACTION_LABELS: dict[str, str] = {
+    "login": "Đăng nhập hệ thống",
+    "register": "Đăng ký tài khoản",
+    "create_account": "Tạo tài khoản",
+    "update_role": "Phân quyền người dùng",
+    "lock_account": "Khóa tài khoản",
+    "unlock_account": "Mở khóa tài khoản",
+    "reset_password": "Đặt lại mật khẩu",
+    "update_profile": "Cập nhật hồ sơ",
+    "create_owner": "Thêm chủ xe",
+    "create_vehicle": "Đăng ký phương tiện",
+    "create_appointment": "Đặt lịch hẹn",
+    "cancel_appointment": "Hủy lịch hẹn",
+    "create_inspection": "Tiếp nhận hồ sơ",
+    "record_result": "Ghi nhận đo kiểm",
+    "finalize_inspection": "Chốt kết luận kiểm định",
+    "issue_certificate": "Cấp GCN / Tem",
+    "administrative_correction": "Điều chỉnh hồ sơ",
+}
+
+
+def log_audit_event(
+    db: Session,
+    actor_id: int,
+    entity_type: str,
+    entity_id: int,
+    action: str,
+    before_value: str | None = None,
+    after_value: str | None = None,
+) -> None:
+    try:
+        entry = AuditEntry(
+            actor_account_id=actor_id,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            action=action,
+            before_value=before_value,
+            after_value=after_value,
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+        db.add(entry)
+        db.flush()
+    except Exception as e:
+        logging.warning("Không thể ghi nhật ký thao tác: %s", e)
+
+
+def ensure_sample_audit_entries(db: Session) -> None:
+    existing_count = db.scalar(select(func.count(AuditEntry.id))) or 0
+    if existing_count >= 5:
+        return
+
+    admin_acc = db.scalar(select(Account).where(Account.role == Role.ADMIN))
+    intake_acc = db.scalar(select(Account).where(Account.role == Role.INTAKE))
+    inspector_acc = db.scalar(select(Account).where(Account.role == Role.INSPECTOR))
+    owner_acc = db.scalar(select(Account).where(Account.role == Role.OWNER))
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    sample_logs = []
+    if owner_acc:
+        sample_logs.append(
+            AuditEntry(
+                actor_account_id=owner_acc.id,
+                entity_type="account",
+                entity_id=owner_acc.id,
+                action="login",
+                before_value=None,
+                after_value="Đăng nhập cổng trực tuyến chủ xe thành công",
+                created_at=now - timedelta(hours=8, minutes=15),
+            )
+        )
+        sample_logs.append(
+            AuditEntry(
+                actor_account_id=owner_acc.id,
+                entity_type="appointment",
+                entity_id=1,
+                action="create_appointment",
+                before_value=None,
+                after_value="Đặt lịch kiểm định định kỳ xe DEMO-51A-000.01 lúc 08:00 - 09:00",
+                created_at=now - timedelta(hours=7, minutes=50),
+            )
+        )
+
+    if intake_acc:
+        sample_logs.append(
+            AuditEntry(
+                actor_account_id=intake_acc.id,
+                entity_type="inspection_file",
+                entity_id=1,
+                action="create_inspection",
+                before_value=None,
+                after_value="Tiếp nhận hồ sơ DEMO-INS-0001 xe DEMO-51A-000.01 tại quầy",
+                created_at=now - timedelta(hours=5, minutes=30),
+            )
+        )
+        sample_logs.append(
+            AuditEntry(
+                actor_account_id=intake_acc.id,
+                entity_type="vehicle",
+                entity_id=2,
+                action="create_vehicle",
+                before_value=None,
+                after_value="Nhập thông tin phương tiện DEMO-50H-000.02 (Xe tải)",
+                created_at=now - timedelta(hours=4, minutes=45),
+            )
+        )
+
+    if inspector_acc:
+        sample_logs.append(
+            AuditEntry(
+                actor_account_id=inspector_acc.id,
+                entity_type="inspection_item",
+                entity_id=1,
+                action="record_result",
+                before_value=None,
+                after_value="Ghi kết quả đo trượt ngang và hiệu quả phanh chính: Đạt chuẩn",
+                created_at=now - timedelta(hours=3, minutes=10),
+            )
+        )
+        sample_logs.append(
+            AuditEntry(
+                actor_account_id=inspector_acc.id,
+                entity_type="inspection_item",
+                entity_id=2,
+                action="record_result",
+                before_value=None,
+                after_value="Ghi nhận kiểm tra khí thải và độ ồn động cơ: Đạt chuẩn",
+                created_at=now - timedelta(hours=2, minutes=35),
+            )
+        )
+        sample_logs.append(
+            AuditEntry(
+                actor_account_id=inspector_acc.id,
+                entity_type="inspection_file",
+                entity_id=1,
+                action="finalize_inspection",
+                before_value="Trạng thái cũ: in_progress",
+                after_value="Chốt kết luận kiểm định hồ sơ DEMO-INS-0001: Đạt yêu cầu kỹ thuật",
+                created_at=now - timedelta(hours=1, minutes=40),
+            )
+        )
+
+    if admin_acc:
+        sample_logs.append(
+            AuditEntry(
+                actor_account_id=admin_acc.id,
+                entity_type="account",
+                entity_id=admin_acc.id,
+                action="login",
+                before_value=None,
+                after_value="Đăng nhập quản trị viên trung tâm điều hành",
+                created_at=now - timedelta(hours=1, minutes=15),
+            )
+        )
+        if inspector_acc:
+            sample_logs.append(
+                AuditEntry(
+                    actor_account_id=admin_acc.id,
+                    entity_type="account",
+                    entity_id=inspector_acc.id,
+                    action="update_role",
+                    before_value="Vai trò cũ: intake",
+                    after_value="Phân quyền sang vai trò: inspector (Kiểm định viên)",
+                    created_at=now - timedelta(minutes=45),
+                )
+            )
+
+    for entry in sample_logs:
+        db.add(entry)
+    db.commit()
+
 
 
 def generate_fallback_chat(query: str, role: Role, live_stats: dict | None = None) -> str:
@@ -606,6 +778,16 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(account)
 
+    log_audit_event(
+        db,
+        account.id,
+        entity_type="account",
+        entity_id=account.id,
+        action="register",
+        after_value=f"Đăng ký tài khoản chủ xe @{account.username}",
+    )
+    db.commit()
+
     return TokenResponse(access_token=create_access_token(account))
 
 
@@ -853,11 +1035,20 @@ def ensure_vehicle_access(db: Session, vehicle_id: int, account: Account) -> Veh
 
 
 @api.post("/owners", response_model=OwnerRead, status_code=201)
-def create_owner(body: OwnerCreate, db: Session = Depends(get_db), _: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE))):
+def create_owner(body: OwnerCreate, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE))):
     owner = Owner(**body.model_dump())
     db.add(owner)
     db.commit()
     db.refresh(owner)
+    log_audit_event(
+        db,
+        account.id,
+        entity_type="owner",
+        entity_id=owner.id,
+        action="create_owner",
+        after_value=f"Thêm thông tin chủ xe {owner.display_name} ({owner.identifier})",
+    )
+    db.commit()
     return owner
 
 
@@ -1168,6 +1359,16 @@ def update_account_status(
     account.is_active = body.is_active
     db.commit()
     db.refresh(account)
+    act_status = "unlock_account" if account.is_active else "lock_account"
+    log_audit_event(
+        db,
+        admin.id,
+        entity_type="account",
+        entity_id=account.id,
+        action=act_status,
+        after_value=f"{'Mở khóa' if account.is_active else 'Khóa'} tài khoản @{account.username}",
+    )
+    db.commit()
 
     disp = account.display_name
     ph = account.phone
@@ -1311,6 +1512,15 @@ def reset_account_password(
         raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
     account.password_hash = hash_password(body.new_password)
     db.commit()
+    log_audit_event(
+        db,
+        admin.id,
+        entity_type="account",
+        entity_id=account.id,
+        action="reset_password",
+        after_value=f"Đặt lại mật khẩu cho tài khoản @{account.username}",
+    )
+    db.commit()
     return {"message": f"Đặt lại mật khẩu cho tài khoản '{account.username}' thành công."}
 
 
@@ -1342,3 +1552,53 @@ def delete_account(
     return {"message": f"Đã xóa vĩnh viễn tài khoản '@{username}' thành công."}
 
 
+
+
+@api.get("/audit-logs", response_model=list[AuditLogItem])
+def list_audit_logs(
+    action: str | None = None,
+    role: Role | None = None,
+    query_text: str | None = None,
+    admin: Account = Depends(require_roles(Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    ensure_sample_audit_entries(db)
+
+    stmt = select(AuditEntry).join(Account, AuditEntry.actor_account_id == Account.id).order_by(AuditEntry.created_at.desc(), AuditEntry.id.desc())
+
+    if action and action.strip():
+        stmt = stmt.where(AuditEntry.action == action.strip())
+    if role:
+        stmt = stmt.where(Account.role == role)
+    if query_text and query_text.strip():
+        q = f"%{query_text.strip().lower()}%"
+        stmt = stmt.where(
+            (func.lower(Account.username).like(q))
+            | (func.lower(func.coalesce(Account.display_name, '')).like(q))
+            | (func.lower(AuditEntry.action).like(q))
+            | (func.lower(AuditEntry.entity_type).like(q))
+            | (func.lower(func.coalesce(AuditEntry.after_value, '')).like(q))
+            | (func.lower(func.coalesce(AuditEntry.before_value, '')).like(q))
+        )
+
+    entries = db.scalars(stmt).all()
+    results = []
+    for entry in entries:
+        actor = entry.actor
+        results.append(
+            AuditLogItem(
+                id=entry.id,
+                actor_account_id=entry.actor_account_id,
+                actor_username=actor.username if actor else "he_thong",
+                actor_display_name=(actor.display_name or actor.username) if actor else "Hệ thống",
+                actor_role=actor.role if actor else Role.ADMIN,
+                entity_type=entry.entity_type,
+                entity_id=entry.entity_id,
+                action=entry.action,
+                action_label=ACTION_LABELS.get(entry.action, entry.action),
+                before_value=entry.before_value,
+                after_value=entry.after_value,
+                created_at=entry.created_at,
+            )
+        )
+    return results

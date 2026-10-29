@@ -1,8 +1,8 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, ApiError, Appointment, ChatMessage, Inspection, InspectionResult, isTokenExpired, Owner, Role, Session, UserProfile, Vehicle, AccountListItem, login as apiLogin, register as apiRegister, sendForgotPasswordOtp, verifyOtpOnly, verifyOtpAndResetPassword } from './api'
+import { api, ApiError, Appointment, AuditLogItem, ChatMessage, Inspection, InspectionResult, isTokenExpired, Owner, Role, Session, UserProfile, Vehicle, AccountListItem, login as apiLogin, register as apiRegister, sendForgotPasswordOtp, verifyOtpOnly, verifyOtpAndResetPassword } from './api'
 import './support-chat.css'
 
-type Page = 'overview' | 'vehicles' | 'appointments' | 'inspections' | 'owners' | 'roles' | 'inspection-testing' | 'profile'
+type Page = 'overview' | 'vehicles' | 'appointments' | 'inspections' | 'owners' | 'roles' | 'audit-logs' | 'inspection-testing' | 'profile'
 const roleName: Record<Role, string> = { admin: 'Quản trị viên', intake: 'Nhân viên tiếp nhận', inspector: 'Kiểm định viên', owner: 'Chủ xe' }
 const statusName: Record<string, string> = { active: 'Đang hiệu lực', cancelled: 'Đã hủy', completed: 'Hoàn tất', received: 'Mới tiếp nhận', needs_documents: 'Thiếu hồ sơ', in_progress: 'Đang kiểm định', passed: 'Đạt', failed: 'Không đạt' }
 const resultName: Record<string, string> = { dat: 'Đạt', mi: 'Mi', ma: 'Ma', dd: 'DD' }
@@ -16,6 +16,7 @@ const PAGE_PERMISSIONS: Record<Page, Role[]> = {
   'inspections': ['admin', 'intake', 'inspector', 'owner'],
   'owners': ['admin', 'intake'],
   'roles': ['admin'],
+  'audit-logs': ['admin'],
   'inspection-testing': ['admin', 'inspector'],
   'profile': ['admin', 'intake', 'inspector', 'owner'],
 }
@@ -34,6 +35,7 @@ function getPagesForRole(role: Role): { id: Page; label: string; icon: string }[
       { id: 'vehicles', label: 'Quản lý phương tiện', icon: '▣' },
       { id: 'owners', label: 'Quản lý chủ xe', icon: '♙' },
       { id: 'roles', label: 'Phân quyền hệ thống', icon: '🛡' },
+      { id: 'audit-logs', label: 'Nhật ký hệ thống', icon: '📋' },
     ]
   }
   if (role === 'intake') {
@@ -245,6 +247,8 @@ function App() {
     ? 'Chỉnh sửa thông tin cá nhân'
     : page === 'roles'
     ? 'Phân quyền hệ thống'
+    : page === 'audit-logs'
+    ? 'Nhật ký thao tác hệ thống'
     : allowedPages.find(item => item.id === page)?.label ?? 'Tổng quan'
 
   function triggerIntakeForVehicle(vehicleId?: number) {
@@ -452,6 +456,7 @@ function App() {
                 />
               )}
               {page === 'roles' && <SystemRolesPage session={session} />}
+              {page === 'audit-logs' && <AuditLogsPage session={session} />}
               {page === 'profile' && (
                 <ProfilePage
                   session={session}
@@ -4257,6 +4262,523 @@ function SystemRolesPage({ session }: { session: Session }) {
           </div>
         )}
       </div>
+    </>
+  )
+}
+
+
+/* ==========================================================================
+   SYSTEM AUDIT & ACTIVITY LOGS PAGE
+   ========================================================================== */
+function AuditLogsPage({ session }: { session: Session }) {
+  const [logs, setLogs] = useState<AuditLogItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
+  const [selectedAction, setSelectedAction] = useState<string>('all')
+  const [selectedRole, setSelectedRole] = useState<string>('all')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [selectedLog, setSelectedLog] = useState<AuditLogItem | null>(null)
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await api.auditLogs(session.token, {
+        action: selectedAction !== 'all' ? selectedAction : undefined,
+        role: selectedRole !== 'all' ? selectedRole : undefined,
+        query_text: query.trim() || undefined,
+      })
+      setLogs(data)
+    } catch (err: any) {
+      setError(err?.message || 'Không thể tải danh sách nhật ký thao tác.')
+    } finally {
+      setLoading(false)
+    }
+  }, [session.token, selectedAction, selectedRole, query])
+
+  useEffect(() => {
+    void fetchLogs()
+  }, [fetchLogs])
+
+  // Client-side instant filter to ensure ultra-smooth response
+  const filteredLogs = useMemo(() => {
+    return logs.filter(item => {
+      if (selectedAction !== 'all' && item.action !== selectedAction) return false
+      if (selectedRole !== 'all' && item.actor_role !== selectedRole) return false
+      if (!query.trim()) return true
+      const q = query.toLowerCase()
+      return (
+        item.actor_username.toLowerCase().includes(q) ||
+        (item.actor_display_name && item.actor_display_name.toLowerCase().includes(q)) ||
+        item.action_label.toLowerCase().includes(q) ||
+        item.entity_type.toLowerCase().includes(q) ||
+        (item.after_value && item.after_value.toLowerCase().includes(q)) ||
+        (item.before_value && item.before_value.toLowerCase().includes(q))
+      )
+    })
+  }, [logs, selectedAction, selectedRole, query])
+
+  // Pagination: 10 items per page
+  const pageSize = 10
+  const pagedLogs = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredLogs.slice(start, start + pageSize)
+  }, [filteredLogs, currentPage, pageSize])
+
+  const formatDateTime = (isoString: string) => {
+    try {
+      const d = new Date(isoString)
+      return new Intl.DateTimeFormat('vi-VN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }).format(d)
+    } catch {
+      return isoString
+    }
+  }
+
+  const getEntityTypeLabel = (type: string) => {
+    switch (type) {
+      case 'inspection_file': return 'Hồ sơ kiểm định'
+      case 'appointment': return 'Lịch hẹn'
+      case 'vehicle': return 'Phương tiện'
+      case 'owner': return 'Chủ xe'
+      case 'account': return 'Tài khoản'
+      case 'inspection_item': return 'Hạng mục đo kiểm'
+      case 'certificate': return 'GCN / Tem'
+      default: return type
+    }
+  }
+
+  const getActionBadgeColor = (action: string) => {
+    if (['create_appointment', 'create_inspection', 'create_vehicle', 'create_owner', 'create_account', 'issue_certificate'].includes(action)) {
+      return { bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' }
+    }
+    if (['cancel_appointment', 'lock_account', 'delete_account'].includes(action)) {
+      return { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' }
+    }
+    if (['update_role', 'reset_password', 'unlock_account', 'administrative_correction'].includes(action)) {
+      return { bg: '#f5f3ff', color: '#6d28d9', border: '#ddd6fe' }
+    }
+    if (['record_result', 'finalize_inspection'].includes(action)) {
+      return { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' }
+    }
+    return { bg: '#f8fafc', color: '#475569', border: '#e2e8f0' }
+  }
+
+  return (
+    <>
+      <div className="section-head">
+        <div>
+          <span className="section-sub">QUẢN TRỊ HỆ THỐNG</span>
+          <h2>Nhật ký thao tác hệ thống</h2>
+          <p style={{ color: '#64748b', fontSize: '14px', marginTop: '4px' }}>
+            Theo dõi, tra cứu và kiểm toán toàn bộ lịch sử thao tác của tất cả vai trò trên hệ thống.
+          </p>
+        </div>
+        <div className="section-actions">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
+              style={{
+                background: '#f1f5f9',
+                color: '#334155',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 600,
+              }}
+            >
+              Tổng số thao tác: <strong>{filteredLogs.length}</strong>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: '20px', marginBottom: '24px' }}>
+        {/* Filter bar */}
+        <div className="table-filter-bar" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="search-input-wrapper" style={{ flex: '1 1 260px', position: 'relative' }}>
+            <svg
+              className="search-icon"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              stroke="currentColor"
+              strokeWidth="2"
+              fill="none"
+              style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="text"
+              className="table-search-input"
+              placeholder="Tìm theo người thực hiện, đối tượng, nội dung..."
+              value={query}
+              onChange={e => {
+                setQuery(e.target.value)
+                setCurrentPage(1)
+              }}
+              style={{
+                paddingLeft: '38px',
+                height: '44px',
+                width: '100%',
+                borderRadius: '10px',
+                border: '1.5px solid #e2e8f0',
+                fontSize: '14px',
+              }}
+            />
+            {query && (
+              <button
+                type="button"
+                className="search-clear-btn"
+                onClick={() => {
+                  setQuery('')
+                  setCurrentPage(1)
+                }}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  fontSize: '16px',
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          <select
+            className="table-filter-select"
+            value={selectedAction}
+            onChange={e => {
+              setSelectedAction(e.target.value)
+              setCurrentPage(1)
+            }}
+            style={{
+              height: '44px',
+              borderRadius: '10px',
+              border: '1.5px solid #e2e8f0',
+              padding: '0 14px',
+              fontSize: '14px',
+              minWidth: '200px',
+            }}
+            title="Lọc theo thao tác cụ thể"
+          >
+            <option value="all">⚡ Tất cả thao tác</option>
+            <option value="create_appointment">📅 Đặt lịch hẹn</option>
+            <option value="cancel_appointment">❌ Hủy lịch hẹn</option>
+            <option value="create_inspection">📋 Tiếp nhận hồ sơ</option>
+            <option value="record_result">🔬 Ghi nhận đo kiểm</option>
+            <option value="finalize_inspection">🏁 Chốt kết luận kiểm định</option>
+            <option value="issue_certificate">📜 Cấp GCN / Tem</option>
+            <option value="create_vehicle">🚗 Đăng ký phương tiện</option>
+            <option value="create_owner">👤 Thêm chủ xe</option>
+            <option value="create_account">➕ Tạo tài khoản</option>
+            <option value="update_role">🛡 Phân quyền vai trò</option>
+            <option value="lock_account">🔒 Khóa tài khoản</option>
+            <option value="unlock_account">🔓 Mở khóa tài khoản</option>
+            <option value="reset_password">🔑 Đặt lại mật khẩu</option>
+            <option value="login">🚪 Đăng nhập hệ thống</option>
+            <option value="register">📝 Đăng ký tài khoản</option>
+            <option value="administrative_correction">⚖ Điều chỉnh hồ sơ</option>
+          </select>
+
+          <select
+            className="table-filter-select"
+            value={selectedRole}
+            onChange={e => {
+              setSelectedRole(e.target.value)
+              setCurrentPage(1)
+            }}
+            style={{
+              height: '44px',
+              borderRadius: '10px',
+              border: '1.5px solid #e2e8f0',
+              padding: '0 14px',
+              fontSize: '14px',
+              minWidth: '170px',
+            }}
+            title="Lọc theo vai trò"
+          >
+            <option value="all">👥 Tất cả vai trò</option>
+            <option value="admin">Quản trị viên</option>
+            <option value="intake">Nhân viên tiếp nhận</option>
+            <option value="inspector">Kiểm định viên</option>
+            <option value="owner">Chủ xe</option>
+          </select>
+
+          <button
+            type="button"
+            className="button button-outline"
+            onClick={fetchLogs}
+            style={{
+              height: '44px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              borderRadius: '10px',
+              padding: '0 16px',
+              fontSize: '14px',
+              fontWeight: 600,
+            }}
+            title="Làm mới danh sách nhật ký"
+          >
+            ↻ Làm mới
+          </button>
+        </div>
+
+        {error && <div className="form-error" style={{ marginTop: '16px' }}>{error}</div>}
+
+        {/* Data Table */}
+        <div className="table-responsive" style={{ marginTop: '18px', overflowX: 'auto' }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b' }}>
+              <div className="loading-spinner" style={{ margin: '0 auto 12px' }} />
+              Đang tải nhật ký thao tác hệ thống...
+            </div>
+          ) : filteredLogs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 0', color: '#94a3b8' }}>
+              <div style={{ fontSize: '32px', marginBottom: '8px' }}>🔍</div>
+              <div style={{ fontWeight: 600, fontSize: '15px', color: '#64748b' }}>Không tìm thấy thao tác nào phù hợp</div>
+              <p style={{ fontSize: '13px', marginTop: '4px' }}>Hãy thử điều chỉnh lại bộ lọc tìm kiếm hoặc từ khóa.</p>
+            </div>
+          ) : (
+            <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ width: '155px', textAlign: 'left' }}>THỜI GIAN</th>
+                  <th style={{ minWidth: '180px', textAlign: 'left' }}>NGƯỜI THỰC HIỆN</th>
+                  <th style={{ width: '150px', textAlign: 'left' }}>VAI TRÒ</th>
+                  <th style={{ width: '175px', textAlign: 'left' }}>THAO TÁC / HÀNH ĐỘNG</th>
+                  <th style={{ width: '150px', textAlign: 'left' }}>ĐỐI TƯỢNG</th>
+                  <th style={{ minWidth: '220px', textAlign: 'left' }}>NỘI DUNG CHI TIẾT</th>
+                  <th style={{ width: '85px', textAlign: 'center' }}>XEM</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedLogs.map(item => {
+                  const badgeStyle = getActionBadgeColor(item.action)
+                  return (
+                    <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ fontSize: '13px', color: '#475569', whiteSpace: 'nowrap' }}>
+                        {formatDateTime(item.created_at)}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div
+                            style={{
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '50%',
+                              backgroundColor: '#e0e7ff',
+                              color: '#3730a3',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 700,
+                              fontSize: '13px',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {(item.actor_display_name || item.actor_username).slice(0, 1).toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: '13.5px', color: '#1e293b' }}>
+                              {item.actor_display_name || item.actor_username}
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#64748b' }}>
+                              @{item.actor_username}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`role-badge-pill role-badge-${item.actor_role}`}>
+                          {roleName[item.actor_role] || item.actor_role}
+                        </span>
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            fontSize: '12.5px',
+                            fontWeight: 600,
+                            backgroundColor: badgeStyle.bg,
+                            color: badgeStyle.color,
+                            border: `1px solid ${badgeStyle.border}`,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {item.action_label}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+                          {getEntityTypeLabel(item.entity_type)}
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: '#94a3b8' }}>
+                          Mã ID: #{item.entity_id}
+                        </div>
+                      </td>
+                      <td style={{ fontSize: '13px', color: '#334155' }}>
+                        {item.after_value || item.before_value || '—'}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          className="button button-outline"
+                          onClick={() => setSelectedLog(item)}
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: '12px',
+                            height: '30px',
+                            borderRadius: '6px',
+                          }}
+                          title="Xem chi tiết thao tác"
+                        >
+                          Chi tiết →
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Pagination bar - 10 items per page */}
+        <TablePagination
+          currentPage={currentPage}
+          totalItems={filteredLogs.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          itemName="thao tác"
+        />
+      </div>
+
+      {/* Modal Detail */}
+      {selectedLog && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={e => {
+            if (e.target === e.currentTarget) setSelectedLog(null)
+          }}
+        >
+          <div className="form-modal" style={{ maxWidth: '640px' }}>
+            <div className="modal-heading">
+              <div>
+                <div className="eyebrow">NHẬT KÝ KIỂM TOÁN HỆ THỐNG</div>
+                <h2>Chi tiết thao tác #{selectedLog.id}</h2>
+                <p>Thông tin kiểm toán và truy vết thay đổi</p>
+              </div>
+              <button type="button" className="close-button" onClick={() => setSelectedLog(null)}>
+                ×
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '8px', alignItems: 'center' }}>
+                <span style={{ color: '#64748b', fontWeight: 600 }}>Thời gian:</span>
+                <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                  {formatDateTime(selectedLog.created_at)}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '8px', alignItems: 'center' }}>
+                <span style={{ color: '#64748b', fontWeight: 600 }}>Người thực hiện:</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <strong>{selectedLog.actor_display_name || selectedLog.actor_username}</strong>
+                  <span style={{ color: '#64748b' }}>({selectedLog.actor_username})</span>
+                  <span className={`role-badge-pill role-badge-${selectedLog.actor_role}`}>
+                    {roleName[selectedLog.actor_role]}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '8px', alignItems: 'center' }}>
+                <span style={{ color: '#64748b', fontWeight: 600 }}>Hành động:</span>
+                <span>
+                  <strong style={{ color: '#1e293b' }}>{selectedLog.action_label}</strong>
+                  <code style={{ marginLeft: '8px', fontSize: '12px', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
+                    {selectedLog.action}
+                  </code>
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '8px', alignItems: 'center' }}>
+                <span style={{ color: '#64748b', fontWeight: 600 }}>Đối tượng tác động:</span>
+                <span>
+                  {getEntityTypeLabel(selectedLog.entity_type)} (ID: #{selectedLog.entity_id})
+                </span>
+              </div>
+
+              {selectedLog.before_value && (
+                <div>
+                  <div style={{ color: '#64748b', fontWeight: 600, marginBottom: '6px' }}>Dữ liệu trước thay đổi:</div>
+                  <pre
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      fontSize: '12.5px',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                      margin: 0,
+                      color: '#b91c1c',
+                    }}
+                  >
+                    {selectedLog.before_value}
+                  </pre>
+                </div>
+              )}
+
+              <div>
+                <div style={{ color: '#64748b', fontWeight: 600, marginBottom: '6px' }}>Nội dung chi tiết / Dữ liệu sau thao tác:</div>
+                <pre
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    fontSize: '12.5px',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                    margin: 0,
+                    color: '#047857',
+                  }}
+                >
+                  {selectedLog.after_value || 'Không có dữ liệu bổ sung'}
+                </pre>
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={() => setSelectedLog(null)}
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

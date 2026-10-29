@@ -263,4 +263,19 @@ class VerifyOtpOnlyRequest(BaseModel):
     otp_code: str = Field(min_length=4, max_length=10)
 
 
+class AuditLogItem(BaseModel):
+    id: int
+    actor_account_id: int
+    actor_username: str
+    actor_display_name: str | None = None
+    actor_role: Role
+    entity_type: str
+    entity_id: int
+    action: str
+    action_label: str
+    before_value: str | None = None
+    after_value: str | None = None
+    created_at: datetime
+
+
 
