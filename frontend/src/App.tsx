@@ -3903,11 +3903,10 @@ function InspectionsPage({
                   <th>MÃ HỒ SƠ</th>
                   <th>PHƯƠNG TIỆN</th>
                   <th>CHỦ PHƯƠNG TIỆN</th>
-                  <th>LOẠI KIỂM ĐỊNH</th>
-                  <th>KÊNH TIẾP NHẬN</th>
+                  <th>LOẠI & KÊNH TIẾP NHẬN</th>
                   <th>NGÀY TIẾP NHẬN</th>
                   <th>TRẠNG THÁI</th>
-                  <th>THAO TÁC</th>
+                  <th style={{ textAlign: 'right' }}>THAO TÁC</th>
                 </tr>
               </thead>
               <tbody>
@@ -3937,13 +3936,19 @@ function InspectionsPage({
                           >
                             {owner?.display_name ? owner.display_name.slice(0, 1).toUpperCase() : '?'}
                           </span>
-                          <strong style={{ color: '#0f172a', fontSize: '13px', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
+                          <strong style={{ color: '#0f172a', fontSize: '13px', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
                             {owner?.display_name ?? '—'}
                           </strong>
                         </div>
                       </td>
-                      <td className="inspection-type-cell"><strong>{i.inspection_type === 'first' ? 'Lần đầu' : 'Định kỳ'}</strong></td>
-                      <td className="inspection-channel-cell">{channelName(i.intake_channel)}</td>
+                      <td className="inspection-type-cell">
+                        <div style={{ fontWeight: 600, fontSize: '12px', color: '#0f172a' }}>
+                          {i.inspection_type === 'first' ? 'Lần đầu' : 'Định kỳ'}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>
+                          {channelName(i.intake_channel)}
+                        </div>
+                      </td>
                       <td className="inspection-date-cell">{formatDate(i.received_at)}</td>
                       <td><StatusBadge value={i.status}/></td>
                       <td style={{ textAlign: 'right' }}>
