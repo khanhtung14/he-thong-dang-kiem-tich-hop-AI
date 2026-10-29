@@ -2856,6 +2856,7 @@ function VehiclesPage({
   onDelete?: (id: number) => Promise<void>;
 }) {
   const [query, setQuery] = useState(''); const [open, setOpen] = useState(false)
+  const [deletingVehicle, setDeletingVehicle] = useState<Vehicle | null>(null);
   const isOwner = role === 'owner'
   const filtered = vehicles.filter(v => `${v.registration_number} ${v.chassis_number} ${v.engine_number} ${v.vehicle_type}`.toLowerCase().includes(query.toLowerCase()))
 
@@ -2933,11 +2934,7 @@ function VehiclesPage({
                             fontWeight: 600,
                             cursor: 'pointer',
                           }}
-                          onClick={() => {
-                            if (window.confirm(`Bạn có chắc chắn muốn xóa phương tiện "${v.registration_number}"?`)) {
-                              void onDelete(v.id)
-                            }
-                          }}
+                          onClick={() => setDeletingVehicle(v)}
                           title="Xóa phương tiện"
                         >
                           Xóa
@@ -2967,6 +2964,30 @@ function VehiclesPage({
       )}
     </section>
     {open && <VehicleModal owners={owners} isOwner={isOwner} onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}
+    {deletingVehicle && (
+      <Modal
+        title="Xác nhận xóa phương tiện"
+        subtitle={`Thao tác xóa phương tiện biển số "${deletingVehicle.registration_number}".`}
+        onClose={() => setDeletingVehicle(null)}
+        onSubmit={async () => {
+          if (onDelete) {
+            await onDelete(deletingVehicle.id);
+          }
+          setDeletingVehicle(null);
+        }}
+        submitLabel="Xác nhận xóa"
+        submitVariant="danger"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '14px', lineHeight: 1.6 }}>
+          <div style={{ padding: '14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b' }}>
+            ⚠️ Bạn có chắc chắn muốn xóa phương tiện biển số <strong>"{deletingVehicle.registration_number}"</strong> ({deletingVehicle.vehicle_type}) không?
+            <div style={{ marginTop: '8px', fontSize: '13px', color: '#b91c1c' }}>
+              Lưu ý: Chỉ có thể xóa nếu phương tiện chưa có hồ sơ kiểm định và không có lịch hẹn đang có hiệu lực.
+            </div>
+          </div>
+        </div>
+      </Modal>
+    )}
   </>
 }
 
@@ -2980,6 +3001,7 @@ function OwnersPage({
   onDelete?: (id: number) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
+  const [deletingOwner, setDeletingOwner] = useState<Owner | null>(null);
   const [query, setQuery] = useState('');
   const filtered = owners.filter(o => `${o.display_name} ${o.phone} ${o.identity_or_tax_number}`.toLowerCase().includes(query.toLowerCase()));
 
@@ -3051,11 +3073,7 @@ function OwnersPage({
                             fontWeight: 600,
                             cursor: 'pointer',
                           }}
-                          onClick={() => {
-                            if (window.confirm(`Bạn có chắc chắn muốn xóa chủ xe "${o.display_name}"?`)) {
-                              void onDelete(o.id)
-                            }
-                          }}
+                          onClick={() => setDeletingOwner(o)}
                           title="Xóa chủ xe"
                         >
                           Xóa
@@ -3082,6 +3100,30 @@ function OwnersPage({
       )}
     </section>
     {open && <OwnerModal onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}
+    {deletingOwner && (
+      <Modal
+        title="Xác nhận xóa chủ xe"
+        subtitle={`Thao tác xóa hồ sơ chủ xe "${deletingOwner.display_name}".`}
+        onClose={() => setDeletingOwner(null)}
+        onSubmit={async () => {
+          if (onDelete) {
+            await onDelete(deletingOwner.id);
+          }
+          setDeletingOwner(null);
+        }}
+        submitLabel="Xác nhận xóa"
+        submitVariant="danger"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '14px', lineHeight: 1.6 }}>
+          <div style={{ padding: '14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b' }}>
+            ⚠️ Bạn có chắc chắn muốn xóa chủ xe <strong>"{deletingOwner.display_name}"</strong> (Số định danh: {deletingOwner.identity_or_tax_number}) không?
+            <div style={{ marginTop: '8px', fontSize: '13px', color: '#b91c1c' }}>
+              Lưu ý: Chỉ có thể xóa nếu chủ xe này chưa có phương tiện liên kết và không gắn với tài khoản đăng nhập.
+            </div>
+          </div>
+        </div>
+      </Modal>
+    )}
   </>
 }
 
@@ -3361,7 +3403,7 @@ function formatDate(value: string) { const date = new Date(value); return Number
 function serviceName(value: string) { return ({ periodic: 'Kiểm định định kỳ', new_registration: 'Đăng ký xe mới', information_change: 'Thay đổi thông tin' } as Record<string, string>)[value] ?? value }
 function channelName(value: string) { return ({ counter: 'Tại quầy', postal: 'Bưu chính', online: 'Trực tuyến' } as Record<string, string>)[value] ?? value }
 
-function Modal({ title, subtitle, children, onClose, onSubmit, submitLabel = 'Lưu thông tin' }: { title: string; subtitle: string; children: ReactNode; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; submitLabel?: string }) { const [busy, setBusy] = useState(false); return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}><form className="form-modal" onSubmit={async e => { e.preventDefault(); setBusy(true); try { await onSubmit(e) } finally { setBusy(false) } }}><div className="modal-heading"><div><div className="eyebrow">THÔNG TIN NGHIỆP VỤ</div><h2>{title}</h2><p>{subtitle}</p></div><button type="button" className="close-button" onClick={onClose}>×</button></div><div className="modal-body">{children}</div><div className="modal-footer"><button type="button" className="button button-ghost" onClick={onClose}>Hủy</button><button className="button button-primary" disabled={busy}>{busy ? 'Đang lưu...' : submitLabel}</button></div></form></div> }
+function Modal({ title, subtitle, children, onClose, onSubmit, submitLabel = 'Lưu thông tin', submitVariant = 'primary' }: { title: string; subtitle: string; children: ReactNode; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; submitLabel?: string; submitVariant?: 'primary' | 'danger' }) { const [busy, setBusy] = useState(false); return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}><form className="form-modal" onSubmit={async e => { e.preventDefault(); setBusy(true); try { await onSubmit(e) } finally { setBusy(false) } }}><div className="modal-heading"><div><div className="eyebrow">THÔNG TIN NGHIỆP VỤ</div><h2>{title}</h2><p>{subtitle}</p></div><button type="button" className="close-button" onClick={onClose}>×</button></div><div className="modal-body">{children}</div><div className="modal-footer"><button type="button" className="button button-ghost" onClick={onClose}>Hủy</button><button className={`button ${submitVariant === 'danger' ? 'button-danger' : 'button-primary'}`} style={submitVariant === 'danger' ? { backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#fff' } : undefined} disabled={busy}>{busy ? 'Đang xử lý...' : submitLabel}</button></div></form></div> }
 function Field({ label, children, required = false }: { label: string; children: ReactNode; required?: boolean }) { return <label className="field"><span>{label}{required && <em> *</em>}</span>{children}</label> }
 
 function OwnerModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (body: Omit<Owner, 'id'>) => Promise<void> }) { const [error, setError] = useState(''); async function submit(e: FormEvent<HTMLFormElement>) { const f = new FormData(e.currentTarget); try { await onSubmit({ display_name: String(f.get('name')), identity_or_tax_number: String(f.get('identity')), phone: String(f.get('phone')), address: String(f.get('address')) }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể lưu chủ xe') } } return <Modal title="Thêm chủ xe" subtitle="Nhập thông tin theo giấy tờ của chủ xe." onClose={onClose} onSubmit={submit}><div className="form-grid"><Field label="Họ tên cá nhân / tên tổ chức" required><input name="name" maxLength={255} required placeholder="Nhập họ tên hoặc tên tổ chức"/></Field><Field label="Số định danh / mã số thuế" required><input name="identity" maxLength={50} required placeholder="Nhập số giấy tờ"/></Field><Field label="Số điện thoại" required><input name="phone" maxLength={30} required placeholder="Số điện thoại liên hệ"/></Field><Field label="Địa chỉ cư trú / trụ sở" required><textarea name="address" required rows={3} placeholder="Theo giấy đăng ký xe"/></Field></div>{error && <div className="form-error">{error}</div>}</Modal> }
@@ -4368,6 +4410,7 @@ function SystemRolesPage({ session }: { session: Session }) {
               ? 'Xác nhận mở khóa'
               : 'Xác nhận xóa vĩnh viễn'
           }
+          submitVariant={confirmModal.type === 'delete' ? 'danger' : 'primary'}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '14px', lineHeight: 1.6 }}>
             {confirmModal.type === 'delete' ? (
