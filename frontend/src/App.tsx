@@ -4328,6 +4328,13 @@ function SystemRolesPage({ session }: { session: Session }) {
 /* ==========================================================================
    SYSTEM AUDIT & ACTIVITY LOGS PAGE
    ========================================================================== */
+function formatAuditDetailText(text?: string | null): string {
+  if (!text) return '—'
+  return text
+    .replace(/#APT-[A-Za-z0-9]+\s*/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim() || '—'
+}
 function AuditLogsPage({ session }: { session: Session }) {
   const [logs, setLogs] = useState<AuditLogItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -4710,11 +4717,8 @@ function AuditLogsPage({ session }: { session: Session }) {
                         </span>
                       </td>
                       <td style={{ verticalAlign: 'middle', padding: '12px 8px', boxSizing: 'border-box' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
+                        <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#334155' }}>
                           {getEntityTypeLabel(item.entity_type)}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                          Mã ID: #{item.entity_id}
                         </div>
                       </td>
                       <td style={{ verticalAlign: 'middle', padding: '12px 10px', boxSizing: 'border-box' }}>
@@ -4730,9 +4734,9 @@ function AuditLogsPage({ session }: { session: Session }) {
                             textOverflow: 'ellipsis',
                             wordBreak: 'break-word',
                           }}
-                          title={item.after_value || item.before_value || ''}
+                          title={formatAuditDetailText(item.after_value || item.before_value)}
                         >
-                          {item.after_value || item.before_value || '—'}
+                          {formatAuditDetailText(item.after_value || item.before_value)}
                         </div>
                       </td>
                       <td style={{ textAlign: 'right', verticalAlign: 'middle', padding: '12px 6px', boxSizing: 'border-box' }}>
@@ -4782,7 +4786,7 @@ function AuditLogsPage({ session }: { session: Session }) {
             <div className="modal-heading">
               <div>
                 <div className="eyebrow">NHẬT KÝ KIỂM TOÁN HỆ THỐNG</div>
-                <h2>Chi tiết thao tác #{selectedLog.id}</h2>
+                <h2>Chi tiết thao tác</h2>
                 <p>Thông tin kiểm toán và truy vết thay đổi</p>
               </div>
               <button type="button" className="close-button" onClick={() => setSelectedLog(null)}>
@@ -4801,7 +4805,6 @@ function AuditLogsPage({ session }: { session: Session }) {
                 <span style={{ color: '#64748b', fontWeight: 600 }}>Người thực hiện:</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <strong>{selectedLog.actor_display_name || selectedLog.actor_username}</strong>
-                  <span style={{ color: '#64748b' }}>({selectedLog.actor_username})</span>
                   <span className={`role-badge-pill role-badge-${selectedLog.actor_role}`}>
                     {roleName[selectedLog.actor_role]}
                   </span>
@@ -4812,16 +4815,13 @@ function AuditLogsPage({ session }: { session: Session }) {
                 <span style={{ color: '#64748b', fontWeight: 600 }}>Hành động:</span>
                 <span>
                   <strong style={{ color: '#1e293b' }}>{selectedLog.action_label}</strong>
-                  <code style={{ marginLeft: '8px', fontSize: '12px', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
-                    {selectedLog.action}
-                  </code>
                 </span>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '8px', alignItems: 'center' }}>
                 <span style={{ color: '#64748b', fontWeight: 600 }}>Đối tượng tác động:</span>
-                <span>
-                  {getEntityTypeLabel(selectedLog.entity_type)} (ID: #{selectedLog.entity_id})
+                <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                  {getEntityTypeLabel(selectedLog.entity_type)}
                 </span>
               </div>
 
@@ -4841,7 +4841,7 @@ function AuditLogsPage({ session }: { session: Session }) {
                       color: '#b91c1c',
                     }}
                   >
-                    {selectedLog.before_value}
+                    {formatAuditDetailText(selectedLog.before_value)}
                   </pre>
                 </div>
               )}
@@ -4861,7 +4861,7 @@ function AuditLogsPage({ session }: { session: Session }) {
                     color: '#047857',
                   }}
                 >
-                  {selectedLog.after_value || 'Không có dữ liệu bổ sung'}
+                  {formatAuditDetailText(selectedLog.after_value) || 'Không có dữ liệu bổ sung'}
                 </pre>
               </div>
             </div>

@@ -1128,13 +1128,18 @@ def create_appointment(body: AppointmentCreate, db: Session = Depends(get_db), a
         raise HTTPException(400, f"Không thể lưu thông tin lịch hẹn: {exc}")
 
     db.refresh(appointment)
+    vehicle = db.get(Vehicle, appointment.vehicle_id)
+    plate = vehicle.registration_number if vehicle else ""
+    plate_text = f" xe {plate}" if plate else ""
+    date_formatted = appointment.appointment_date.strftime("%d/%m/%Y") if hasattr(appointment.appointment_date, "strftime") else str(appointment.appointment_date)
+    time_text = f" lúc {appointment.start_time} - {appointment.end_time}" if appointment.start_time else ""
     log_audit_event(
         db,
         account.id,
         entity_type="appointment",
         entity_id=appointment.id,
         action="create_appointment",
-        after_value=f"Đặt lịch hẹn #{appointment.code} cho xe #{appointment.vehicle_id} ngày {appointment.appointment_date}",
+        after_value=f"Đặt lịch kiểm định{plate_text} ngày {date_formatted}{time_text}",
     )
     db.commit()
     return appointment
@@ -1161,6 +1166,19 @@ def cancel_appointment(appointment_id: int, db: Session = Depends(get_db), accou
         raise HTTPException(409, "Chỉ có thể hủy lịch hẹn đang ở trạng thái hiệu lực.")
     appointment.status = AppointmentStatus.CANCELLED
     appointment.active_guard = None
+    vehicle = db.get(Vehicle, appointment.vehicle_id)
+    plate = vehicle.registration_number if vehicle else ""
+    plate_text = f" xe {plate}" if plate else ""
+    date_formatted = appointment.appointment_date.strftime("%d/%m/%Y") if hasattr(appointment.appointment_date, "strftime") else str(appointment.appointment_date)
+    log_audit_event(
+        db,
+        account.id,
+        entity_type="appointment",
+        entity_id=appointment.id,
+        action="cancel_appointment",
+        before_value="Trạng thái cũ: active",
+        after_value=f"Hủy lịch hẹn kiểm định{plate_text} ngày {date_formatted}",
+    )
     db.commit()
     db.refresh(appointment)
     return appointment
@@ -1618,6 +1636,13 @@ def list_audit_logs(
     results = []
     for entry in entries:
         actor = entry.actor
+        after_val = entry.after_value
+        if after_val and "#APT-" in after_val:
+            after_val = re.sub(r'#APT-[A-Za-z0-9]+\s*', '', after_val)
+            after_val = re.sub(r'cho xe #(\d+)', r'xe', after_val)
+        before_val = entry.before_value
+        if before_val and "#APT-" in before_val:
+            before_val = re.sub(r'#APT-[A-Za-z0-9]+\s*', '', before_val)
         results.append(
             AuditLogItem(
                 id=entry.id,
@@ -1629,8 +1654,8 @@ def list_audit_logs(
                 entity_id=entry.entity_id,
                 action=entry.action,
                 action_label=ACTION_LABELS.get(entry.action, entry.action),
-                before_value=entry.before_value,
-                after_value=entry.after_value,
+                before_value=before_val,
+                after_value=after_val,
                 created_at=entry.created_at,
             )
         )
