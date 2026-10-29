@@ -182,9 +182,9 @@ function App() {
       api.vehicles(active.token).then(setVehicles),
       api.appointments(active.token).then(setAppointments),
       api.inspections(active.token).then(setInspections),
-      api.certificates(active.token).then(setCertificates)
+      api.certificates(active.token).then(setCertificates),
+      api.owners(active.token).then(setOwners),
     ]
-    if (canIntake(active.role)) jobs.push(api.owners(active.token).then(setOwners))
     const results = await Promise.allSettled(jobs)
     const failure = results.find((item): item is PromiseRejectedResult => item.status === 'rejected')
     if (failure) {
@@ -384,6 +384,7 @@ function App() {
                 <InspectionTestingPage
                   inspection={testingInspection}
                   vehicle={vehicles.find(v => v.id === testingInspection.vehicle_id)}
+                  owner={owners.find(o => o.id === vehicles.find(v => v.id === testingInspection.vehicle_id)?.owner_id)}
                   token={session.token}
                   role={session.role}
                   onBack={() => navigate(session.role === 'inspector' ? 'overview' : 'inspections')}
@@ -486,6 +487,7 @@ function App() {
                 <InspectionsPage
                   role={session.role}
                   vehicles={vehicles}
+                  owners={owners}
                   inspections={inspections}
                   token={session.token}
                   runAction={runAction}
@@ -596,6 +598,7 @@ function App() {
         <InspectionDetail
           inspection={activeInspectionForDetail}
           vehicle={vehicles.find(v => v.id === activeInspectionForDetail.vehicle_id)}
+          owner={owners.find(o => o.id === vehicles.find(v => v.id === activeInspectionForDetail.vehicle_id)?.owner_id)}
           token={session.token}
           onClose={() => setActiveInspectionForDetail(null)}
         />
@@ -611,10 +614,11 @@ export default App
    (Thay thế hoàn toàn Modal/Module cho Inspector)
    ========================================================================== */
 function InspectionTestingPage({
-  inspection, vehicle, token, role, onBack, runAction, onInspectionUpdated
+  inspection, vehicle, owner, token, role, onBack, runAction, onInspectionUpdated
 }: {
   inspection: Inspection;
   vehicle?: Vehicle;
+  owner?: Owner;
   token: string;
   role: Role;
   onBack: () => void;
@@ -852,6 +856,10 @@ function InspectionTestingPage({
       </div>
 
       <div className="testing-details-grid">
+        <div className="testing-detail-item">
+          <small>Chủ phương tiện</small>
+          <strong>{owner?.display_name || '—'}</strong>
+        </div>
         <div className="testing-detail-item">
           <small>Số khung (Chassis)</small>
           <strong className="mono">{vehicle?.chassis_number || '—'}</strong>
@@ -3778,7 +3786,23 @@ function AppointmentsPage({ role, vehicles, owners, appointments, onCreate, onCa
   </>
 }
 
-function InspectionsPage({ role, vehicles, inspections, token, runAction, onOpenDetail }: { role: Role; vehicles: Vehicle[]; inspections: Inspection[]; token: string; runAction: (action: () => Promise<unknown>, message: string) => Promise<void>; onOpenDetail?: (ins: Inspection) => void }) {
+function InspectionsPage({
+  role,
+  vehicles,
+  owners = [],
+  inspections,
+  token,
+  runAction,
+  onOpenDetail,
+}: {
+  role: Role;
+  vehicles: Vehicle[];
+  owners?: Owner[];
+  inspections: Inspection[];
+  token: string;
+  runAction: (action: () => Promise<unknown>, message: string) => Promise<void>;
+  onOpenDetail?: (ins: Inspection) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Inspection | null>(null);
   const [filter, setFilter] = useState('all');
@@ -3829,6 +3853,7 @@ function InspectionsPage({ role, vehicles, inspections, token, runAction, onOpen
                 <tr>
                   <th>MÃ HỒ SƠ</th>
                   <th>PHƯƠNG TIỆN</th>
+                  <th>CHỦ PHƯƠNG TIỆN</th>
                   <th>LOẠI KIỂM ĐỊNH</th>
                   <th>KÊNH TIẾP NHẬN</th>
                   <th>NGÀY TIẾP NHẬN</th>
@@ -3837,21 +3862,49 @@ function InspectionsPage({ role, vehicles, inspections, token, runAction, onOpen
                 </tr>
               </thead>
               <tbody>
-                {paginated.map(i => (
-                  <tr key={i.id}>
-                    <td><strong className="mono inspection-code">{i.code}</strong></td>
-                    <td><span className="plate plate-large">{vehicleLabel(vehicles, i.vehicle_id)}</span></td>
-                    <td className="inspection-type-cell"><strong>{i.inspection_type === 'first' ? 'Lần đầu' : 'Định kỳ'}</strong></td>
-                    <td className="inspection-channel-cell">{channelName(i.intake_channel)}</td>
-                    <td className="inspection-date-cell">{formatDate(i.received_at)}</td>
-                    <td><StatusBadge value={i.status}/></td>
-                    <td>
-                      <button className="button button-outline button-sm detail-action-btn" onClick={() => handleSelect(i)}>
-                        {role === 'inspector' ? 'Vào đo kiểm →' : 'Chi tiết →'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {paginated.map(i => {
+                  const veh = vehicles.find(v => v.id === i.vehicle_id);
+                  const owner = veh ? owners.find(o => o.id === veh.owner_id) : undefined;
+                  return (
+                    <tr key={i.id}>
+                      <td><strong className="mono inspection-code">{i.code}</strong></td>
+                      <td><span className="plate plate-large">{veh ? veh.registration_number : vehicleLabel(vehicles, i.vehicle_id)}</span></td>
+                      <td className="vehicle-owner-cell">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span
+                            style={{
+                              width: '26px',
+                              height: '26px',
+                              borderRadius: '50%',
+                              backgroundColor: '#e0e7ff',
+                              color: '#3730a3',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {owner?.display_name ? owner.display_name.slice(0, 1).toUpperCase() : '?'}
+                          </span>
+                          <strong style={{ color: '#0f172a', fontSize: '13.5px' }}>
+                            {owner?.display_name ?? '—'}
+                          </strong>
+                        </div>
+                      </td>
+                      <td className="inspection-type-cell"><strong>{i.inspection_type === 'first' ? 'Lần đầu' : 'Định kỳ'}</strong></td>
+                      <td className="inspection-channel-cell">{channelName(i.intake_channel)}</td>
+                      <td className="inspection-date-cell">{formatDate(i.received_at)}</td>
+                      <td><StatusBadge value={i.status}/></td>
+                      <td>
+                        <button className="button button-outline button-sm detail-action-btn" onClick={() => handleSelect(i)}>
+                          {role === 'inspector' ? 'Vào đo kiểm →' : 'Chi tiết →'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -3870,14 +3923,22 @@ function InspectionsPage({ role, vehicles, inspections, token, runAction, onOpen
       )}
     </section>
     {open && <InspectionModal vehicles={vehicles} onClose={() => setOpen(false)} onSubmit={async body => { await runAction(() => api.createInspection(token, body), 'Đã tiếp nhận hồ sơ.'); setOpen(false) }}/>}
-    {!onOpenDetail && selected && <InspectionDetail inspection={selected} vehicle={vehicles.find(v => v.id === selected.vehicle_id)} token={token} onClose={() => setSelected(null)}/>}
+    {!onOpenDetail && selected && (
+      <InspectionDetail
+        inspection={selected}
+        vehicle={vehicles.find(v => v.id === selected.vehicle_id)}
+        owner={owners.find(o => o.id === vehicles.find(v => v.id === selected.vehicle_id)?.owner_id)}
+        token={token}
+        onClose={() => setSelected(null)}
+      />
+    )}
   </>
 }
 
 /* ==========================================================================
    INSPECTION DETAIL DRAWER (FOR ADMIN / INTAKE READ-ONLY VIEW)
    ========================================================================== */
-function InspectionDetail({ inspection, vehicle, token, onClose }: { inspection: Inspection; vehicle?: Vehicle; token: string; onClose: () => void }) {
+function InspectionDetail({ inspection, vehicle, owner, token, onClose }: { inspection: Inspection; vehicle?: Vehicle; owner?: Owner; token: string; onClose: () => void }) {
   const [results, setResults] = useState<InspectionResult[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -3913,9 +3974,15 @@ function InspectionDetail({ inspection, vehicle, token, onClose }: { inspection:
             <small>PHƯƠNG TIỆN</small>
             <strong>{vehicle?.registration_number ?? `Xe #${inspection.vehicle_id}`}</strong>
             <span>{vehicle?.vehicle_type ?? 'Chưa có thông tin'}</span>
+            {owner && (
+              <span style={{ display: 'block', marginTop: '6px', fontSize: '13px', color: '#1e40af', fontWeight: 600 }}>
+                👤 Chủ xe: {owner.display_name} · SĐT: {owner.phone}
+              </span>
+            )}
           </div>
         </div>
         <div className="detail-grid">
+          <DetailField label="Chủ phương tiện" value={owner?.display_name}/>
           <DetailField label="Kênh tiếp nhận" value={channelName(inspection.intake_channel)}/>
           <DetailField label="Ngày tiếp nhận" value={formatDate(inspection.received_at)}/>
           <DetailField label="Số quản lý GCN cũ" value={inspection.old_certificate_management_number}/>

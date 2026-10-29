@@ -1056,8 +1056,16 @@ def create_owner(body: OwnerCreate, db: Session = Depends(get_db), account: Acco
 
 
 @api.get("/owners", response_model=list[OwnerRead])
-def list_owners(db: Session = Depends(get_db), _: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE))):
-    return db.scalars(select(Owner).order_by(Owner.id)).all()
+def list_owners(
+    db: Session = Depends(get_db),
+    account: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE, Role.INSPECTOR, Role.OWNER)),
+):
+    query = select(Owner).order_by(Owner.id)
+    if account.role == Role.OWNER:
+        if not account.owner_id:
+            return []
+        query = query.where(Owner.id == account.owner_id)
+    return db.scalars(query).all()
 
 
 @api.delete("/owners/{owner_id}")
