@@ -2448,36 +2448,6 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
         </div>
         {authMode === 'forgot' ? (
           <div className="login-form-wrap" style={{ width: 'min(460px, 100%)' }}>
-            <div style={{ marginBottom: '18px' }}>
-              <button
-                type="button"
-                style={{
-                  background: '#f8fafc',
-                  border: '1.5px solid #2563eb',
-                  color: '#2563eb',
-                  cursor: 'pointer',
-                  padding: '8px 18px',
-                  borderRadius: '8px',
-                  fontSize: '13.5px',
-                  fontWeight: 700,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  boxShadow: '0 2px 6px rgba(37, 99, 235, 0.12)',
-                  transition: 'all 0.15s ease'
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.background = '#2563eb'
-                  e.currentTarget.style.color = '#ffffff'
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.background = '#f8fafc'
-                  e.currentTarget.style.color = '#2563eb'
-                }}
-                onClick={() => { setAuthMode('login'); setOtpVerified(false); setError('') }}
-              >
-                Quay lại Đăng nhập
-              </button>
-            </div>
             <h2>Khôi phục mật khẩu</h2>
               {forgotStep !== 'email' && (
                 <p className="login-subtitle">
