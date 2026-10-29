@@ -4060,7 +4060,7 @@ function serviceName(value: string) { return ({ periodic: 'Kiểm định địn
 function channelName(value: string) { return ({ counter: 'Tại quầy', postal: 'Bưu chính', online: 'Trực tuyến' } as Record<string, string>)[value] ?? value }
 
 function Modal({ title, subtitle, children, onClose, onSubmit, submitLabel = 'Lưu thông tin', submitVariant = 'primary', submitDisabled = false }: { title: string; subtitle: string; children: ReactNode; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; submitLabel?: string; submitVariant?: 'primary' | 'danger'; submitDisabled?: boolean }) { const [busy, setBusy] = useState(false); return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}><form className="form-modal" onSubmit={async e => { e.preventDefault(); setBusy(true); try { await onSubmit(e) } finally { setBusy(false) } }}><div className="modal-heading"><div><div className="eyebrow">THÔNG TIN NGHIỆP VỤ</div><h2>{title}</h2><p>{subtitle}</p></div><button type="button" className="close-button" onClick={onClose}>×</button></div><div className="modal-body">{children}</div><div className="modal-footer"><button type="button" className="button button-ghost" onClick={onClose}>Hủy</button><button className={`button ${submitVariant === 'danger' ? 'button-danger' : 'button-primary'}`} style={submitVariant === 'danger' ? { backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#fff' } : undefined} disabled={busy || submitDisabled}>{busy ? 'Đang xử lý...' : submitLabel}</button></div></form></div> }
-function Field({ label, children, required = false }: { label: string; children: ReactNode; required?: boolean }) { return <label className="field"><span>{label}{required && <em> *</em>}</span>{children}</label> }
+function Field({ label, children, required = false }: { label: ReactNode; children: ReactNode; required?: boolean }) { return <label className="field"><span>{label}{required && <em> *</em>}</span>{children}</label> }
 
 function OwnerModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (body: Omit<Owner, 'id'>) => Promise<void> }) { const [error, setError] = useState(''); async function submit(e: FormEvent<HTMLFormElement>) { const f = new FormData(e.currentTarget); try { await onSubmit({ display_name: String(f.get('name')), identity_or_tax_number: String(f.get('identity')), phone: String(f.get('phone')), address: String(f.get('address')) }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể lưu chủ xe') } } return <Modal title="Thêm chủ xe" subtitle="Nhập thông tin theo giấy tờ của chủ xe." onClose={onClose} onSubmit={submit}><div className="form-grid"><Field label="Họ tên cá nhân / tên tổ chức" required><input name="name" maxLength={255} required placeholder="Nhập họ tên hoặc tên tổ chức"/></Field><Field label="Số định danh / mã số thuế" required><input name="identity" maxLength={50} required placeholder="Nhập số giấy tờ"/></Field><Field label="Số điện thoại" required><input name="phone" maxLength={30} required placeholder="Số điện thoại liên hệ"/></Field><Field label="Địa chỉ cư trú / trụ sở" required><textarea name="address" required rows={3} placeholder="Theo giấy đăng ký xe"/></Field></div>{error && <div className="form-error">{error}</div>}</Modal> }
 function VehicleModal({
@@ -4342,6 +4342,8 @@ function InspectionModal({
   onSubmit: (body: Pick<Inspection, 'vehicle_id' | 'inspection_type' | 'intake_channel' | 'old_certificate_management_number' | 'registration_document_number' | 'insurance_contract_number' | 'insurance_expiry'>) => Promise<void>;
   defaultVehicleId?: number;
 }) {
+  const isLockedByAppointment = !!defaultVehicleId;
+
   const initialOwnerId = useMemo(() => {
     if (defaultVehicleId) {
       const v = vehicles.find(veh => veh.id === defaultVehicleId);
@@ -4426,7 +4428,7 @@ function InspectionModal({
     }
 
     const f = new FormData(e.currentTarget);
-    const vehicleId = Number(f.get('vehicle')) || Number(selectedVehicleId);
+    const vehicleId = Number(selectedVehicleId) || Number(f.get('vehicle')) || (defaultVehicleId ? Number(defaultVehicleId) : 0);
     if (!vehicleId) {
       setError('Vui lòng chọn phương tiện để tiếp nhận hồ sơ.');
       return;
@@ -4459,13 +4461,26 @@ function InspectionModal({
   return (
     <Modal
       title="Tiếp nhận hồ sơ"
-      subtitle={!selectedOwnerId ? 'Vui lòng chọn chủ xe trước để mở khóa chọn phương tiện và các thông tin hồ sơ.' : 'Ghi nhận thông tin tiếp nhận ban đầu của phương tiện.'}
+      subtitle={
+        isLockedByAppointment
+          ? 'Tiếp nhận phương tiện theo lịch hẹn đăng kiểm đã đặt trước.'
+          : !selectedOwnerId
+          ? 'Vui lòng chọn chủ xe trước để mở khóa chọn phương tiện và các thông tin hồ sơ.'
+          : 'Ghi nhận thông tin tiếp nhận ban đầu của phương tiện.'
+      }
       onClose={onClose}
       onSubmit={submit}
       submitDisabled={!hasOwnerSelected || !selectedVehicleId}
     >
       <div className="form-grid">
-        <Field label="Chủ xe" required>
+        <Field
+          label={
+            <span>
+              Chủ xe {isLockedByAppointment && <small style={{ color: '#0284c7', fontWeight: 600, marginLeft: '6px' }}>(Cố định theo lịch hẹn)</small>}
+            </span>
+          }
+          required
+        >
           <select
             name="owner"
             required
@@ -4474,6 +4489,8 @@ function InspectionModal({
               const val = e.target.value ? Number(e.target.value) : '';
               setSelectedOwnerId(val);
             }}
+            disabled={isLockedByAppointment}
+            style={isLockedByAppointment ? { backgroundColor: '#f8fafc', color: '#475569', cursor: 'not-allowed' } : undefined}
           >
             <option value="">-- Chọn chủ xe trong hệ thống --</option>
             {owners.map(o => (
@@ -4483,13 +4500,21 @@ function InspectionModal({
             ))}
           </select>
         </Field>
-        <Field label="Phương tiện" required>
+        <Field
+          label={
+            <span>
+              Phương tiện {isLockedByAppointment && <small style={{ color: '#0284c7', fontWeight: 600, marginLeft: '6px' }}>(Cố định theo lịch hẹn)</small>}
+            </span>
+          }
+          required
+        >
           <select
             name="vehicle"
             required
             value={selectedVehicleId}
             onChange={e => setSelectedVehicleId(e.target.value ? Number(e.target.value) : '')}
-            disabled={!hasOwnerSelected || availableVehicles.length === 0}
+            disabled={isLockedByAppointment || !hasOwnerSelected || availableVehicles.length === 0}
+            style={isLockedByAppointment ? { backgroundColor: '#f8fafc', color: '#475569', cursor: 'not-allowed' } : undefined}
           >
             {!hasOwnerSelected ? (
               <option value="">-- Vui lòng chọn chủ xe trước --</option>
@@ -4582,12 +4607,17 @@ function InspectionModal({
           <input name="expiry" type="date" disabled={!hasOwnerSelected}/>
         </Field>
       </div>
-      {!hasOwnerSelected && (
+      {isLockedByAppointment && (
+        <div style={{ marginTop: '14px', padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', color: '#1e40af', fontSize: '13px' }}>
+          🔒 <strong>Tiếp nhận theo lịch hẹn:</strong> Thông tin chủ xe và phương tiện được cố định theo đúng lịch hẹn đón tiếp hôm nay.
+        </div>
+      )}
+      {!isLockedByAppointment && !hasOwnerSelected && (
         <div style={{ marginTop: '14px', padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', color: '#1d4ed8', fontSize: '13px' }}>
           💡 <strong>Bước 1:</strong> Vui lòng chọn chủ xe có trong hệ thống để mở khóa chọn phương tiện và thông tin hồ sơ kiểm định.
         </div>
       )}
-      {hasOwnerSelected && availableVehicles.length === 0 && (
+      {!isLockedByAppointment && hasOwnerSelected && availableVehicles.length === 0 && (
         <div style={{ marginTop: '14px', padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', color: '#b45309', fontSize: '13px' }}>
           ⚠️ Chủ xe được chọn hiện chưa có phương tiện nào trong hệ thống. Vui lòng thêm phương tiện cho chủ xe này trước khi tiếp nhận hồ sơ.
         </div>
