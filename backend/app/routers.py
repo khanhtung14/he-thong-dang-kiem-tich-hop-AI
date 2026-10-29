@@ -1188,6 +1188,24 @@ def create_appointment(body: AppointmentCreate, db: Session = Depends(get_db), a
             "Phương tiện này hiện đã có một lịch hẹn đang hiệu lực. Vui lòng hoàn tất hoặc hủy lịch hẹn cũ trước khi đặt lịch mới.",
         )
 
+    # Nếu xe đã từng đăng ký xe mới, không cho phép chọn lại dịch vụ đăng ký xe mới
+    if body.service_type in ("new_registration", "Đăng ký xe mới"):
+        already_registered = db.scalar(
+            select(Appointment).where(
+                Appointment.vehicle_id == body.vehicle_id,
+                Appointment.service_type.in_(("new_registration", "Đăng ký xe mới")),
+                Appointment.status != AppointmentStatus.CANCELLED,
+            )
+        )
+        has_inspection = db.scalar(
+            select(InspectionFile).where(InspectionFile.vehicle_id == body.vehicle_id)
+        )
+        if already_registered or has_inspection:
+            raise HTTPException(
+                400,
+                "Phương tiện này đã từng đăng ký xe mới trong hệ thống. Vui lòng chọn Kiểm định định kỳ hoặc Thay đổi thông tin.",
+            )
+
     code = f"APT-{uuid4().hex[:12].upper()}"
     appointment = Appointment(
         **body.model_dump(),

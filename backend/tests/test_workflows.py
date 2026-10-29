@@ -669,6 +669,40 @@ class WorkflowTests(unittest.TestCase):
         res_o = delete_owner(owner_id=owner.id, account=self.admin, db=self.db)
         self.assertIn("thành công", res_o["message"])
 
+    def test_vehicle_cannot_book_new_registration_twice(self):
+        # 1. Book new registration appointment for vehicle_a
+        app = create_appointment(
+            body=AppointmentCreate(
+                vehicle_id=self.vehicle_a.id,
+                appointment_date=date(2027, 1, 15),
+                start_time=time(8, 0),
+                end_time=time(9, 0),
+                service_type="new_registration",
+            ),
+            account=self.owner_account,
+            db=self.db,
+        )
+        self.assertIsNotNone(app.id)
+
+        # 2. Intake inspection for vehicle_a, which completes appointment
+        self.make_inspection(self.vehicle_a.id)
+
+        # 3. Next time, owner tries to book new_registration again for vehicle_a -> should be rejected with 400
+        with self.assertRaises(HTTPException) as ctx:
+            create_appointment(
+                body=AppointmentCreate(
+                    vehicle_id=self.vehicle_a.id,
+                    appointment_date=date(2027, 2, 20),
+                    start_time=time(9, 0),
+                    end_time=time(10, 0),
+                    service_type="new_registration",
+                ),
+                account=self.owner_account,
+                db=self.db,
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("đăng ký xe mới", ctx.exception.detail)
+
 if __name__ == "__main__":
     unittest.main()
 

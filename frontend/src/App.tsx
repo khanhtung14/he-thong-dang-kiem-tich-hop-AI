@@ -486,6 +486,7 @@ function App() {
                   vehicles={vehicles}
                   owners={owners}
                   appointments={appointments}
+                  inspections={inspections}
                   onCreate={body => runAction(() => api.createAppointment(session.token, body), 'Đã tạo lịch hẹn.')}
                   onCancel={id => runAction(() => api.cancelAppointment(session.token, id), 'Đã hủy lịch hẹn.')}
                 />
@@ -593,6 +594,8 @@ function App() {
         <AppointmentModal
           vehicles={vehicles}
           owners={owners}
+          appointments={appointments}
+          inspections={inspections}
           isOwner={session.role === 'owner'}
           onClose={() => setOpenGlobalAppointmentModal(false)}
           onSubmit={async body => {
@@ -3746,7 +3749,23 @@ function OwnerDetailModal({
   );
 }
 
-function AppointmentsPage({ role, vehicles, owners, appointments, onCreate, onCancel }: { role: Role; vehicles: Vehicle[]; owners: Owner[]; appointments: Appointment[]; onCreate: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void>; onCancel: (id: number) => Promise<void> }) {
+function AppointmentsPage({
+  role,
+  vehicles,
+  owners,
+  appointments,
+  inspections = [],
+  onCreate,
+  onCancel,
+}: {
+  role: Role;
+  vehicles: Vehicle[];
+  owners: Owner[];
+  appointments: Appointment[];
+  inspections?: Inspection[];
+  onCreate: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void>;
+  onCancel: (id: number) => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const canCreate = ['admin', 'intake', 'owner'].includes(role);
@@ -3831,7 +3850,7 @@ function AppointmentsPage({ role, vehicles, owners, appointments, onCreate, onCa
         <Empty title="Chưa có lịch hẹn" detail="Lịch hẹn mới sẽ hiển thị ở đây."/>
       )}
     </section>
-    {open && <AppointmentModal vehicles={vehicles} owners={owners} isOwner={role === 'owner'} onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}
+    {open && <AppointmentModal vehicles={vehicles} owners={owners} appointments={appointments} inspections={inspections} isOwner={role === 'owner'} onClose={() => setOpen(false)} onSubmit={async body => { await onCreate(body); setOpen(false) }}/>}
   </>
 }
 
@@ -4168,18 +4187,23 @@ function VehicleModal({
 function AppointmentModal({
   vehicles,
   owners = [],
+  appointments = [],
+  inspections = [],
   onClose,
   onSubmit,
   isOwner = false,
 }: {
   vehicles: Vehicle[];
   owners?: Owner[];
+  appointments?: Appointment[];
+  inspections?: Inspection[];
   onClose: () => void;
   onSubmit: (body: Omit<Appointment, 'id' | 'code' | 'status'>) => Promise<void>;
   isOwner?: boolean;
 }) {
   const [selectedOwnerId, setSelectedOwnerId] = useState<number | ''>('');
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | ''>('');
+  const [serviceType, setServiceType] = useState('periodic');
   const [error, setError] = useState('');
 
   const hasOwnerSelected = isOwner || !!selectedOwnerId;
@@ -4189,6 +4213,24 @@ function AppointmentModal({
     if (!selectedOwnerId) return [];
     return vehicles.filter(v => v.owner_id === Number(selectedOwnerId));
   }, [vehicles, selectedOwnerId, isOwner]);
+
+  // Kiểm tra xem phương tiện được chọn đã từng đăng ký xe mới hay chưa
+  const hasRegisteredNew = useMemo(() => {
+    if (!selectedVehicleId) return false;
+    const vehId = Number(selectedVehicleId);
+    const hasApptNew = appointments.some(
+      a => a.vehicle_id === vehId && (a.service_type === 'new_registration' || a.service_type === 'Đăng ký xe mới') && a.status !== 'cancelled'
+    );
+    const hasInspection = inspections.some(i => i.vehicle_id === vehId);
+    return hasApptNew || hasInspection;
+  }, [selectedVehicleId, appointments, inspections]);
+
+  // Nếu xe đã từng đăng ký xe mới mà đang chọn dịch vụ 'new_registration', tự động chuyển sang 'periodic'
+  useEffect(() => {
+    if (hasRegisteredNew && serviceType === 'new_registration') {
+      setServiceType('periodic');
+    }
+  }, [hasRegisteredNew, serviceType]);
 
   // Khi chọn chủ xe, tự động chọn xe nếu chủ xe chỉ có 1 xe duy nhất
   useEffect(() => {
@@ -4217,10 +4259,14 @@ function AppointmentModal({
     const dateVal = String(f.get('date') || '');
     const start = String(f.get('start') || '06:30');
     const end = String(f.get('end') || '07:00');
-    const service = String(f.get('service') || 'periodic');
+    const service = String(f.get('service') || serviceType || 'periodic');
 
     if (!vehicleId) {
       setError('Vui lòng chọn phương tiện để đặt lịch hẹn.');
+      return;
+    }
+    if (service === 'new_registration' && hasRegisteredNew) {
+      setError('Phương tiện này đã từng đăng ký xe mới trong hệ thống. Vui lòng chọn Kiểm định định kỳ hoặc Thay đổi thông tin.');
       return;
     }
     if (!dateVal) {
@@ -4314,11 +4360,28 @@ function AppointmentModal({
           />
         </Field>
         <Field label="Loại dịch vụ" required>
-          <select name="service" required disabled={!hasOwnerSelected} defaultValue="periodic">
+          <select
+            name="service"
+            required
+            disabled={!hasOwnerSelected}
+            value={serviceType}
+            onChange={e => setServiceType(e.target.value)}
+          >
             <option value="periodic">Kiểm định định kỳ</option>
-            <option value="new_registration">Đăng ký xe mới</option>
+            {!hasRegisteredNew ? (
+              <option value="new_registration">Đăng ký xe mới</option>
+            ) : (
+              <option value="new_registration" disabled style={{ color: '#94a3b8' }}>
+                Đăng ký xe mới (Xe đã từng đăng ký mới)
+              </option>
+            )}
             <option value="information_change">Thay đổi thông tin</option>
           </select>
+          {hasRegisteredNew && (
+            <small style={{ display: 'block', marginTop: '4px', color: '#64748b', fontSize: '11.5px', lineHeight: 1.4 }}>
+              ℹ️ Phương tiện này đã hoàn tất thủ tục đăng ký xe mới. Lần hẹn tiếp theo là <strong>Kiểm định định kỳ</strong> hoặc <strong>Thay đổi thông tin</strong>.
+            </small>
+          )}
         </Field>
         <Field label="Giờ bắt đầu" required>
           <select name="start" required disabled={!hasOwnerSelected} defaultValue="06:30">
