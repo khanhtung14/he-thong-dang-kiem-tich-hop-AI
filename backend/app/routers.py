@@ -1125,10 +1125,12 @@ def list_vehicles(db: Session = Depends(get_db), account: Account = Depends(requ
 
 
 @api.delete("/vehicles/{vehicle_id}")
-def delete_vehicle(vehicle_id: int, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE))):
+def delete_vehicle(vehicle_id: int, db: Session = Depends(get_db), account: Account = Depends(require_roles(Role.ADMIN, Role.INTAKE, Role.OWNER))):
     vehicle = db.get(Vehicle, vehicle_id)
     if vehicle is None:
         raise HTTPException(404, "Không tìm thấy thông tin phương tiện.")
+    if account.role == Role.OWNER and vehicle.owner_id != account.owner_id:
+        raise HTTPException(403, "Bạn không có quyền xóa phương tiện này.")
     if vehicle.inspections:
         raise HTTPException(400, "Không thể xóa phương tiện đã có hồ sơ kiểm định.")
     if vehicle.appointments:

@@ -2903,7 +2903,7 @@ function VehiclesPage({
                   <th>SỐ KHUNG</th>
                   <th>SỐ MÁY</th>
                   {!isOwner && <th>CHỦ XE</th>}
-                  {onDelete && !isOwner && <th style={{ textAlign: 'right' }}>THAO TÁC</th>}
+                  {onDelete && <th style={{ textAlign: 'right' }}>THAO TÁC</th>}
                 </tr>
               </thead>
               <tbody>
@@ -2918,7 +2918,7 @@ function VehiclesPage({
                         <strong>{owners.find(o => o.id === v.owner_id)?.display_name ?? `Chủ xe #${v.owner_id}`}</strong>
                       </td>
                     )}
-                    {onDelete && !isOwner && (
+                    {onDelete && (
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button
                           type="button"
