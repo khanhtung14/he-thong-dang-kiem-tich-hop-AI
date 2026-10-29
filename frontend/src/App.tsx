@@ -885,7 +885,7 @@ function InspectionTestingPage({
                   className="preset-chip-btn"
                   onClick={() => selectPreset(preset)}
                 >
-                  ＋ {preset.label}
+                  {preset.label}
                 </button>
               ))}
             </div>
@@ -1433,16 +1433,16 @@ function IntakeOverview({
       {/* Quick Action Strip */}
       <div className="quick-action-strip">
         <button className="quick-action-btn quick-action-btn-primary" onClick={() => onStartIntake()}>
-          ＋ Tiếp nhận hồ sơ mới
+          Tiếp nhận hồ sơ mới
         </button>
         <button className="quick-action-btn" onClick={onOpenOwnerModal}>
-          ＋ Thêm hồ sơ chủ xe
+          Thêm hồ sơ chủ xe
         </button>
         <button className="quick-action-btn" onClick={onOpenVehicleModal}>
-          ＋ Đăng ký phương tiện
+          Đăng ký phương tiện
         </button>
         <button className="quick-action-btn" onClick={onOpenAppointmentModal}>
-          ＋ Đặt lịch hẹn mới
+          Đặt lịch hẹn mới
         </button>
       </div>
 
@@ -1460,7 +1460,7 @@ function IntakeOverview({
             <h3>Khách hẹn hôm nay cần đón tiếp ({activeTodayApt.length})</h3>
             <p>Đối chiếu biển số xe và bấm "Tiếp nhận ngay" khi khách có mặt tại quầy</p>
           </div>
-          <button className="button button-outline button-sm" onClick={onOpenAppointmentModal}>＋ Thêm lịch hẹn</button>
+          <button className="button button-outline button-sm" onClick={onOpenAppointmentModal}>Thêm lịch hẹn</button>
         </div>
         {activeTodayApt.length ? (
           <div className="table-wrap">
@@ -1486,7 +1486,7 @@ function IntakeOverview({
                     <td>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button className="button button-primary button-sm" onClick={() => onStartIntake(item.vehicle_id)}>
-                          Tiếp nhận ngay ＋
+                          Tiếp nhận ngay
                         </button>
                         <button className="button button-ghost button-sm" onClick={() => void onCancelAppointment(item.id)}>
                           Hủy
@@ -1499,7 +1499,7 @@ function IntakeOverview({
             </table>
           </div>
         ) : (
-          <Empty title="Chưa có khách hẹn trong ngày hôm nay" detail="Bấm '＋ Đặt lịch hẹn mới' nếu có khách đặt lịch tại quầy hoặc qua điện thoại." />
+          <Empty title="Chưa có khách hẹn trong ngày hôm nay" detail="Bấm 'Đặt lịch hẹn mới' nếu có khách đặt lịch tại quầy hoặc qua điện thoại." />
         )}
       </section>
 
@@ -1750,7 +1750,7 @@ function OwnerOverview({
           <p>Quản lý phương tiện sở hữu, theo dõi tiến độ hồ sơ và đặt lịch kiểm định thuận tiện.</p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button className="button button-primary" onClick={onOpenAppointmentModal}>＋ Đặt lịch đăng kiểm mới</button>
+          <button className="button button-primary" onClick={onOpenAppointmentModal}>Đặt lịch đăng kiểm mới</button>
         </div>
       </div>
 
@@ -1793,7 +1793,7 @@ function OwnerOverview({
                     <td><span className="mono">{v.engine_number}</span></td>
                     <td>
                       <button className="button button-outline button-sm" onClick={onOpenAppointmentModal}>
-                        Đặt lịch cho xe này ＋
+                        Đặt lịch cho xe này
                       </button>
                     </td>
                   </tr>
@@ -1843,7 +1843,7 @@ function OwnerOverview({
             </table>
           </div>
         ) : (
-          <Empty title="Bạn chưa có lịch hẹn đăng kiểm nào" detail="Bấm '＋ Đặt lịch đăng kiểm mới' để chủ động chọn ngày và khung giờ." />
+          <Empty title="Bạn chưa có lịch hẹn đăng kiểm nào" detail="Bấm 'Đặt lịch đăng kiểm mới' để chủ động chọn ngày và khung giờ." />
         )}
       </section>
     </>
@@ -2883,7 +2883,7 @@ function VehiclesPage({
       eyebrow={isOwner ? "QUẢN LÝ PHƯƠNG TIỆN" : "DỮ LIỆU NỀN"}
       title={isOwner ? "Xe của tôi" : "Phương tiện"}
       description={isOwner ? "Danh sách phương tiện bạn sở hữu trong hệ thống đăng kiểm." : "Thông tin phương tiện được quản lý trong hệ thống đăng kiểm."}
-      action={(canIntake(role) || isOwner) ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Thêm phương tiện</button> : undefined}
+      action={(canIntake(role) || isOwner) ? <button className="button button-primary" onClick={() => setOpen(true)}>Thêm phương tiện</button> : undefined}
     />
     <div className="toolbar">
       <div className="search-box">
@@ -2962,7 +2962,7 @@ function VehiclesPage({
       ) : (
         <Empty
           title="Không tìm thấy phương tiện"
-          detail={query ? 'Thử thay đổi nội dung tìm kiếm.' : isOwner ? 'Bạn chưa có phương tiện nào trong danh sách. Bấm "＋ Thêm phương tiện" để thêm xe mới.' : 'Danh sách phương tiện đang trống.'}
+          detail={query ? 'Thử thay đổi nội dung tìm kiếm.' : isOwner ? 'Bạn chưa có phương tiện nào trong danh sách. Bấm "Thêm phương tiện" để thêm xe mới.' : 'Danh sách phương tiện đang trống.'}
         />
       )}
     </section>
@@ -3003,7 +3003,7 @@ function OwnersPage({
   }, [currentPage, totalPages]);
 
   return <>
-    <PageHeading eyebrow="DỮ LIỆU NỀN" title="Chủ xe" description="Quản lý thông tin chủ xe đã được tiếp nhận." action={<button className="button button-primary" onClick={() => setOpen(true)}>＋ Thêm chủ xe</button>}/>
+    <PageHeading eyebrow="DỮ LIỆU NỀN" title="Chủ xe" description="Quản lý thông tin chủ xe đã được tiếp nhận." action={<button className="button button-primary" onClick={() => setOpen(true)}>Thêm chủ xe</button>}/>
     <div className="toolbar">
       <div className="search-box">
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Tìm theo tên chủ xe, số điện thoại, CCCD/MST..."/>
@@ -3114,7 +3114,7 @@ function AppointmentsPage({ role, vehicles, appointments, onCreate, onCancel }: 
   }, [currentPage, totalPages]);
 
   return <>
-    <PageHeading eyebrow="ĐIỀU PHỐI TIẾP NHẬN" title="Lịch hẹn đăng kiểm" description="Sắp xếp khung giờ kiểm định đảm bảo năng lực phục vụ của trung tâm." action={canCreate ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Tạo lịch hẹn</button> : undefined}/>
+    <PageHeading eyebrow="ĐIỀU PHỐI TIẾP NHẬN" title="Lịch hẹn đăng kiểm" description="Sắp xếp khung giờ kiểm định đảm bảo năng lực phục vụ của trung tâm." action={canCreate ? <button className="button button-primary" onClick={() => setOpen(true)}>Tạo lịch hẹn</button> : undefined}/>
     <div className="toolbar">
       <div className="search-box">
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Tìm theo mã lịch hẹn, biển số xe..."/>
@@ -3206,7 +3206,7 @@ function InspectionsPage({ role, vehicles, inspections, token, runAction, onOpen
   }
 
   return <>
-    <PageHeading eyebrow="NGHIỆP VỤ KIỂM ĐỊNH" title="Hồ sơ kiểm định" description="Tiếp nhận hồ sơ và theo dõi kết quả kiểm tra phương tiện." action={canCreate ? <button className="button button-primary" onClick={() => setOpen(true)}>＋ Tiếp nhận hồ sơ</button> : undefined}/>
+    <PageHeading eyebrow="NGHIỆP VỤ KIỂM ĐỊNH" title="Hồ sơ kiểm định" description="Tiếp nhận hồ sơ và theo dõi kết quả kiểm tra phương tiện." action={canCreate ? <button className="button button-primary" onClick={() => setOpen(true)}>Tiếp nhận hồ sơ</button> : undefined}/>
     <div className="filter-row">
       <div className="tabs">
         <button className={filter === 'all' ? 'tab-active' : ''} onClick={() => setFilter('all')}>Tất cả <b>{inspections.length}</b></button>
@@ -3946,7 +3946,7 @@ function SystemRolesPage({ session }: { session: Session }) {
         title="Phân quyền hệ thống"
         action={
           <button className="button button-primary" onClick={() => setOpenCreate(true)}>
-            ＋ Thêm tài khoản mới
+            Thêm tài khoản mới
           </button>
         }
       />
