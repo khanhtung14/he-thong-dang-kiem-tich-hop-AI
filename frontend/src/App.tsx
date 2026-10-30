@@ -4855,17 +4855,9 @@ function SystemRolesPage({ session }: { session: Session }) {
     }
   }, [currentPage, totalPages]);
 
-  const hasOtherAdmin = accounts.some(a => a.role === 'admin' && (!roleModalAccount || a.id !== roleModalAccount.id))
-  const hasAnyAdmin = accounts.some(a => a.role === 'admin')
-
-
   async function handleUpdateRole(e: FormEvent) {
     e.preventDefault()
     if (!roleModalAccount) return
-    if (selectedNewRole === 'admin' && hasOtherAdmin && roleModalAccount.role !== 'admin') {
-      setError('Hệ thống chỉ cho phép duy nhất 1 tài khoản Quản trị viên. Không thể phân quyền Quản trị viên cho người thứ hai.')
-      return
-    }
     setActionLoading(true)
     setError('')
     try {
@@ -4978,10 +4970,6 @@ function SystemRolesPage({ session }: { session: Session }) {
 
   async function handleCreateAccount(e: FormEvent) {
     e.preventDefault()
-    if (createRole === 'admin' && hasAnyAdmin) {
-      setError('Hệ thống chỉ cho phép duy nhất 1 tài khoản Quản trị viên.')
-      return
-    }
     setActionLoading(true)
     setError('')
     try {
@@ -5156,7 +5144,7 @@ function SystemRolesPage({ session }: { session: Session }) {
                               onClick={() => {
                                 setActiveMenuId(null)
                                 setRoleModalAccount(acc)
-                                setSelectedNewRole(acc.role === 'admin' ? 'intake' : acc.role)
+                                setSelectedNewRole(acc.role)
                               }}
                             >
                               Đổi quyền
@@ -5297,6 +5285,7 @@ function SystemRolesPage({ session }: { session: Session }) {
                   onChange={e => setSelectedNewRole(e.target.value as Role)}
                   style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 >
+                  <option value="admin">Quản trị viên (Toàn quyền quản trị hệ thống và phân quyền)</option>
                   <option value="intake">Nhân viên tiếp nhận (Tiếp nhận hồ sơ, điều phối lịch hẹn)</option>
                   <option value="inspector">Kiểm định viên (Đo kiểm chuyền kỹ thuật, chốt kết quả)</option>
                   <option value="owner">Chủ phương tiện (Quản lý xe và đăng ký kiểm định trực tuyến)</option>
@@ -5371,6 +5360,7 @@ function SystemRolesPage({ session }: { session: Session }) {
                 onChange={e => setCreateRole(e.target.value as Role)}
                 style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
               >
+                <option value="admin">Quản trị viên (Toàn quyền quản trị hệ thống & nhân sự)</option>
                 <option value="intake">Nhân viên tiếp nhận (Tiếp nhận hồ sơ & lịch hẹn)</option>
                 <option value="inspector">Kiểm định viên (Kỹ thuật chuyền kiểm định)</option>
                 <option value="owner">Chủ phương tiện (Chủ xe)</option>

@@ -421,23 +421,28 @@ class WorkflowTests(unittest.TestCase):
         updated = update_account_role(account_id=created.id, body=role_req, admin=self.admin, db=self.db)
         self.assertEqual(updated.role, Role.INTAKE)
 
-        # Single admin rule: cannot promote a second account to ADMIN
+        # Can promote an account to ADMIN
         admin_role_req = AccountRoleUpdateRequest(role=Role.ADMIN)
-        with self.assertRaises(HTTPException) as ctx:
-            update_account_role(account_id=created.id, body=admin_role_req, admin=self.admin, db=self.db)
-        self.assertEqual(ctx.exception.status_code, 400)
-        self.assertIn("chỉ cho phép duy nhất 1 tài khoản Quản trị viên", ctx.exception.detail)
+        promoted = update_account_role(account_id=created.id, body=admin_role_req, admin=self.admin, db=self.db)
+        self.assertEqual(promoted.role, Role.ADMIN)
 
-        # Single admin rule: cannot create a new account with ADMIN role
+        # Cannot delete an ADMIN account directly
+        with self.assertRaises(HTTPException) as ctx:
+            delete_account(account_id=created.id, admin=self.admin, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("Không thể xóa tài khoản Quản trị viên", ctx.exception.detail)
+
+        # Demote created back to INTAKE for remaining tests
+        update_account_role(account_id=created.id, body=role_req, admin=self.admin, db=self.db)
+
+        # Can create a new account with ADMIN role
         new_admin_req = AccountCreateAdminRequest(
             username="second_admin",
             password="password123",
             role=Role.ADMIN,
         )
-        with self.assertRaises(HTTPException) as ctx:
-            create_system_account(body=new_admin_req, admin=self.admin, db=self.db)
-        self.assertEqual(ctx.exception.status_code, 400)
-        self.assertIn("chỉ cho phép duy nhất 1 tài khoản Quản trị viên", ctx.exception.detail)
+        second_admin = create_system_account(body=new_admin_req, admin=self.admin, db=self.db)
+        self.assertEqual(second_admin.role, Role.ADMIN)
 
         # Self-demotion prevention
         with self.assertRaises(HTTPException) as ctx:

@@ -1500,16 +1500,6 @@ def update_account_role(
     if account.id == admin.id and body.role != Role.ADMIN:
         raise HTTPException(status_code=400, detail="Không thể tự giáng quyền tài khoản quản trị của chính bạn.")
 
-    if body.role == Role.ADMIN and account.role != Role.ADMIN:
-        admin_count = db.scalar(
-            select(func.count(Account.id)).where(Account.role == Role.ADMIN, Account.id != account.id)
-        ) or 0
-        if admin_count >= 1:
-            raise HTTPException(
-                status_code=400,
-                detail="Hệ thống chỉ cho phép duy nhất 1 tài khoản Quản trị viên. Không thể phân quyền Quản trị viên cho tài khoản thứ hai.",
-            )
-
     account.role = body.role
     db.commit()
     db.refresh(account)
@@ -1597,14 +1587,6 @@ def create_system_account(
     existing = db.scalar(select(Account).where(Account.username == clean_username))
     if existing:
         raise HTTPException(status_code=400, detail=f"Tên đăng nhập '{clean_username}' đã được sử dụng.")
-
-    if body.role == Role.ADMIN:
-        admin_count = db.scalar(select(func.count(Account.id)).where(Account.role == Role.ADMIN)) or 0
-        if admin_count >= 1:
-            raise HTTPException(
-                status_code=400,
-                detail="Hệ thống chỉ cho phép duy nhất 1 tài khoản Quản trị viên. Không thể tạo thêm Quản trị viên mới.",
-            )
 
     new_acc = Account(
         username=clean_username,
